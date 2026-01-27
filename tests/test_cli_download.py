@@ -14,6 +14,12 @@ from scimesh.cli import (
 from scimesh.download import DownloadResult
 
 
+@pytest.fixture(autouse=True)
+def set_unpaywall_email(monkeypatch):
+    """Set UNPAYWALL_EMAIL for all tests in this module."""
+    monkeypatch.setenv("UNPAYWALL_EMAIL", "test@example.com")
+
+
 @pytest.fixture
 def mock_download_results():
     """Fixture providing sample download results."""
