@@ -1,5 +1,10 @@
 # scimesh
 
+[![PyPI version](https://img.shields.io/pypi/v/scimesh)](https://pypi.org/project/scimesh/)
+[![Python](https://img.shields.io/pypi/pyversions/scimesh)](https://pypi.org/project/scimesh/)
+[![CI](https://github.com/gabfssilva/scimesh/actions/workflows/ci.yml/badge.svg)](https://github.com/gabfssilva/scimesh/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A Python library for systematic literature search across multiple academic databases.
 
 Search arXiv, OpenAlex, and Scopus with a unified API. Export to BibTeX, RIS, CSV, or JSON. Download PDFs via Open Access (Unpaywall).
