@@ -288,6 +288,8 @@ scimesh search <query> [OPTIONS]
 | `-o, --output` | Output file path | stdout |
 | `--on-error` | Error handling: fail, warn, ignore | warn |
 | `--no-dedupe` | Disable deduplication | false |
+| `--local-fulltext-indexing` | Auto-download and index PDFs for fulltext (S2/CrossRef) | false |
+| `--log-level` | Log level: debug, info, warning, error | - |
 
 ### `scimesh download`
 
@@ -497,6 +499,17 @@ scimesh search "ALL(CRISPR) AND AUTHOR(Doudna)" -p crossref
 scimesh search "ALL(transformer) AND TITLE(bert)" -p semantic_scholar
 ```
 
+**Auto-download with `--local-fulltext-indexing`:**
+
+For Semantic Scholar and CrossRef, you can enable automatic PDF download during fulltext searches. Papers not in the local index will be downloaded (via Open Access), text extracted, and indexed on-the-fly:
+
+```bash
+# Downloads and indexes PDFs automatically (slower, but works without pre-indexing)
+scimesh search "ALL(CRISPR) AND TITLE(gene)" -p crossref --local-fulltext-indexing
+```
+
+This is useful when you don't have papers pre-indexed locally. Requires `UNPAYWALL_EMAIL` env var.
+
 **Python API:**
 
 ```python
@@ -524,6 +537,19 @@ if index.has("10.1234/paper"):
 
 # List all indexed papers
 papers = index.list_papers()
+```
+
+**Auto-download (Python API):**
+
+```python
+from scimesh.providers import CrossRef, SemanticScholar
+from scimesh.query import fulltext, title
+
+# Enable auto_download for automatic PDF download and indexing
+async with CrossRef(auto_download=True) as provider:
+    query = fulltext("CRISPR") & title("gene editing")
+    async for paper in provider.search(query):
+        print(paper.title)
 ```
 
 ---

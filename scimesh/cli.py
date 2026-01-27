@@ -1,6 +1,7 @@
 # scimesh/cli.py
 import asyncio
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -12,13 +13,24 @@ from scimesh import take
 from scimesh.download import download_papers
 from scimesh.export import get_exporter
 from scimesh.export.tree import TreeExporter
-from scimesh.models import SearchResult
+from scimesh.models import Paper, SearchResult, merge_papers
 from scimesh.providers import Arxiv, CrossRef, OpenAlex, Scopus, SemanticScholar
+from scimesh.providers.base import Provider
 
 app = cyclopts.App(
     name="scimesh",
     help="Scientific paper search across multiple providers.",
 )
+
+
+def _setup_logging(log_level: str | None) -> None:
+    """Configure logging based on log level."""
+    if log_level:
+        level = getattr(logging, log_level.upper(), logging.WARNING)
+        logging.basicConfig(
+            level=level,
+            format="%(levelname)s %(name)s: %(message)s",
+        )
 
 PROVIDERS = {
     "arxiv": Arxiv,
@@ -45,9 +57,50 @@ CITATIONS_PROVIDERS = {
 }
 
 
+def _parse_host_concurrency(value: str | None) -> tuple[dict[str, int] | None, int | None]:  # noqa: C901
+    """Parse host concurrency string into dict and/or default.
+
+    Args:
+        value: Either an integer string ("3") for default limit, or
+            per-host config like "arxiv.org=2,api.unpaywall.org=3".
+            Can also combine: "3,arxiv.org=2" (default 3, arxiv 2).
+
+    Returns:
+        Tuple of (per-host limits dict, default limit).
+    """
+    if not value:
+        return None, None
+
+    # Try parsing as plain integer (default for all hosts)
+    try:
+        return None, int(value)
+    except ValueError:
+        pass
+
+    # Parse as host=limit pairs
+    result: dict[str, int] = {}
+    default: int | None = None
+    for part in value.split(","):
+        part = part.strip()
+        if "=" in part:
+            host, limit = part.split("=", 1)
+            try:
+                result[host.strip()] = int(limit.strip())
+            except ValueError:
+                pass
+        else:
+            # Plain number is default
+            try:
+                default = int(part)
+            except ValueError:
+                pass
+
+    return (result if result else None), default
+
+
 async def _stream_search(
     query: str,
-    provider_instances: list,
+    provider_instances: list[Provider],
     max_results: int,
     on_error: str,
     tree_exporter: TreeExporter,
@@ -120,8 +173,31 @@ def search(
         bool,
         cyclopts.Parameter(name="--no-dedupe", help="Disable deduplication"),
     ] = False,
+    local_fulltext_indexing: Annotated[
+        bool,
+        cyclopts.Parameter(
+            name="--local-fulltext-indexing",
+            help="Download and index PDFs for fulltext search (for providers without native fulltext)",
+        ),
+    ] = False,
+    host_concurrency: Annotated[
+        str | None,
+        cyclopts.Parameter(
+            name="--host-concurrency",
+            help="Concurrency: '3' (all hosts) or 'arxiv.org=2,api.unpaywall.org=3' (per-host)",
+        ),
+    ] = None,
+    log_level: Annotated[
+        str | None,
+        cyclopts.Parameter(
+            name="--log-level",
+            help="Log level: debug, info, warning, error",
+        ),
+    ] = None,
 ) -> None:
     """Search for scientific papers across multiple providers."""
+    _setup_logging(log_level)
+
     # Normalize providers (support comma-separated values)
     providers = [p.strip() for item in providers for p in item.split(",")]
 
@@ -144,7 +220,28 @@ def search(
         sys.exit(1)
 
     # Create provider instances
-    provider_instances = [PROVIDERS[p]() for p in providers]
+    # Pass downloader to providers that support local fulltext indexing
+    provider_instances: list[Provider] = []
+    downloader = None
+
+    if local_fulltext_indexing:
+        from scimesh.download import FallbackDownloader, HostSemaphores, OpenAccessDownloader
+
+        # Parse host concurrency limits
+        host_limits, default_limit = _parse_host_concurrency(host_concurrency)
+        host_semaphores = None
+        if host_limits or default_limit:
+            host_semaphores = HostSemaphores(host_limits, default=default_limit)
+
+        downloader = FallbackDownloader(
+            OpenAccessDownloader(host_semaphores=host_semaphores),
+        )
+
+    for p in providers:
+        if local_fulltext_indexing and p in ("crossref", "semantic_scholar"):
+            provider_instances.append(PROVIDERS[p](downloader=downloader))
+        else:
+            provider_instances.append(PROVIDERS[p]())
 
     # Use streaming for tree format without output file (only in terminal)
     if format == "tree" and output is None:
@@ -209,7 +306,7 @@ def _extract_arxiv_doi_from_url(url: str | None) -> str | None:
     return None
 
 
-def _parse_dois_from_stdin() -> list[str]:
+def _parse_dois_from_stdin() -> list[str]:  # noqa: C901
     """Parse DOIs from JSON piped via stdin.
 
     Expects JSON with structure: {"papers": [{"doi": "...", "url": "..."}, ...]}
@@ -218,7 +315,7 @@ def _parse_dois_from_stdin() -> list[str]:
     try:
         data = json.load(sys.stdin)
         papers = data.get("papers", [])
-        dois = []
+        dois: list[str] = []
         for p in papers:
             doi = p.get("doi")
             if doi:
@@ -235,7 +332,7 @@ def _parse_dois_from_stdin() -> list[str]:
 
 def _parse_dois_from_file(filepath: Path) -> list[str]:
     """Parse DOIs from a file, one DOI per line."""
-    dois = []
+    dois: list[str] = []
     with filepath.open() as f:
         for line in f:
             line = line.strip()
@@ -245,14 +342,28 @@ def _parse_dois_from_file(filepath: Path) -> list[str]:
 
 
 async def _run_downloads(
-    dois: list[str], output_dir: Path, use_scihub: bool = False
+    dois: list[str],
+    output_dir: Path,
+    use_scihub: bool = False,
+    host_concurrency: str | None = None,
 ) -> tuple[int, int]:
     """Run downloads and print progress. Returns (success_count, fail_count)."""
-    from scimesh.download import Downloader, OpenAccessDownloader, SciHubDownloader
+    from scimesh.download import (
+        Downloader,
+        HostSemaphores,
+        OpenAccessDownloader,
+        SciHubDownloader,
+    )
 
-    downloaders: list[Downloader] = [OpenAccessDownloader()]
+    # Parse host concurrency limits
+    host_limits, default_limit = _parse_host_concurrency(host_concurrency)
+    host_semaphores = None
+    if host_limits or default_limit:
+        host_semaphores = HostSemaphores(host_limits, default=default_limit)
+
+    downloaders: list[Downloader] = [OpenAccessDownloader(host_semaphores=host_semaphores)]
     if use_scihub:
-        downloaders.append(SciHubDownloader())
+        downloaders.append(SciHubDownloader(host_semaphores=host_semaphores))
 
     success_count = 0
     fail_count = 0
@@ -290,6 +401,13 @@ def download(
         bool,
         cyclopts.Parameter(name="--scihub", help="Enable Sci-Hub fallback (use at your own risk)"),
     ] = False,
+    host_concurrency: Annotated[
+        str | None,
+        cyclopts.Parameter(
+            name="--host-concurrency",
+            help="Concurrency: '3' (all hosts) or 'arxiv.org=2,api.unpaywall.org=3' (per-host)",
+        ),
+    ] = None,
 ) -> None:
     """Download papers by DOI."""
     dois: list[str] = []
@@ -319,17 +437,19 @@ def download(
     print(f"Downloading {len(dois)} papers to {output}/")
 
     # Run downloads
-    success_count, fail_count = asyncio.run(_run_downloads(dois, output, scihub))
+    success_count, fail_count = asyncio.run(
+        _run_downloads(dois, output, scihub, host_concurrency)
+    )
 
     # Print summary
     total = success_count + fail_count
     print(f"Downloaded: {success_count}/{total} | Failed: {fail_count}")
 
 
-async def _get_paper(paper_id: str, providers: list[str]) -> tuple[list, dict]:
+async def _get_paper(paper_id: str, providers: list[str]) -> tuple[list[Paper], dict[str, Exception]]:
     """Get a paper from multiple providers and return (papers, errors)."""
-    papers = []
-    errors = {}
+    papers: list[Paper] = []
+    errors: dict[str, Exception] = {}
 
     for pname in providers:
         if pname not in GET_PROVIDERS:
@@ -402,8 +522,6 @@ def get(
 
     # Merge results if requested and multiple papers found
     if merge and len(papers) > 1:
-        from scimesh.models import merge_papers
-
         papers = [merge_papers(papers)]
 
     result = SearchResult(papers=papers, errors=errors)
@@ -481,10 +599,10 @@ def index_cmd(
 
 async def _get_citations(
     paper_id: str, providers: list[str], direction: str, max_results: int
-) -> tuple[list, dict]:
+) -> tuple[list[Paper], dict[str, Exception]]:
     """Get citations from multiple providers and return (papers, errors)."""
-    papers = []
-    errors = {}
+    papers: list[Paper] = []
+    errors: dict[str, Exception] = {}
 
     for pname in providers:
         if pname not in CITATIONS_PROVIDERS:

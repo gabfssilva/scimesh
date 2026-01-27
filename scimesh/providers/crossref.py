@@ -1,14 +1,20 @@
 # scimesh/providers/crossref.py
+from __future__ import annotations
+
 import logging
 import os
 from collections.abc import AsyncIterator
 from datetime import date
+from typing import TYPE_CHECKING
 from urllib.parse import urlencode
 
 from scimesh.models import Author, Paper
 from scimesh.providers._fulltext_fallback import FulltextFallbackMixin
 from scimesh.providers.base import Provider
 from scimesh.query.combinators import And, Field, Not, Or, Query, YearRange, has_fulltext
+
+if TYPE_CHECKING:
+    from scimesh.download.base import Downloader
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +29,11 @@ class CrossRef(FulltextFallbackMixin, Provider):
         self,
         api_key: str | None = None,
         mailto: str | None = None,
+        downloader: "Downloader | None" = None,
     ):
         super().__init__(api_key)
         self._mailto = mailto
+        self._downloader = downloader
 
     def _load_from_env(self) -> str | None:
         return os.getenv("CROSSREF_API_KEY")
