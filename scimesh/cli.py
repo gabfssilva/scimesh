@@ -1,10 +1,12 @@
 # scimesh/cli.py
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
 import sys
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import cyclopts
 
@@ -16,6 +18,9 @@ from scimesh.export.tree import TreeExporter
 from scimesh.models import Paper, SearchResult, merge_papers
 from scimesh.providers import Arxiv, CrossRef, OpenAlex, Scopus, SemanticScholar
 from scimesh.providers.base import Provider
+
+if TYPE_CHECKING:
+    from scimesh.download import FallbackDownloader
 
 app = cyclopts.App(
     name="scimesh",
@@ -98,6 +103,31 @@ def _parse_host_concurrency(value: str | None) -> tuple[dict[str, int] | None, i
     return (result if result else None), default
 
 
+def _create_downloader(
+    host_concurrency: str | None = None,
+    use_scihub: bool = False,
+) -> FallbackDownloader:
+    """Create a FallbackDownloader with OpenAccess and optionally SciHub."""
+    from scimesh.download import (
+        Downloader,
+        FallbackDownloader,
+        HostSemaphores,
+        OpenAccessDownloader,
+        SciHubDownloader,
+    )
+
+    host_limits, default_limit = _parse_host_concurrency(host_concurrency)
+    host_semaphores = None
+    if host_limits or default_limit:
+        host_semaphores = HostSemaphores(host_limits, default=default_limit)
+
+    downloaders: list[Downloader] = [OpenAccessDownloader(host_semaphores=host_semaphores)]
+    if use_scihub:
+        downloaders.append(SciHubDownloader(host_semaphores=host_semaphores))
+
+    return FallbackDownloader(*downloaders)
+
+
 async def _stream_search(
     query: str,
     provider_instances: list[Provider],
@@ -167,6 +197,13 @@ def search(
             help="Download and index PDFs for fulltext search (for providers without native fulltext)",
         ),
     ] = False,
+    scihub: Annotated[
+        bool,
+        cyclopts.Parameter(
+            name="--scihub",
+            help="Enable Sci-Hub fallback for PDF downloads (requires --local-fulltext-indexing)",
+        ),
+    ] = False,
     host_concurrency: Annotated[
         str | None,
         cyclopts.Parameter(
@@ -207,25 +244,11 @@ def search(
         sys.exit(1)
 
     # Create provider instances
-    # Pass downloader to providers that support local fulltext indexing
     provider_instances: list[Provider] = []
-    downloader = None
-
-    if local_fulltext_indexing:
-        from scimesh.download import FallbackDownloader, HostSemaphores, OpenAccessDownloader
-
-        # Parse host concurrency limits
-        host_limits, default_limit = _parse_host_concurrency(host_concurrency)
-        host_semaphores = None
-        if host_limits or default_limit:
-            host_semaphores = HostSemaphores(host_limits, default=default_limit)
-
-        downloader = FallbackDownloader(
-            OpenAccessDownloader(host_semaphores=host_semaphores),
-        )
+    downloader = _create_downloader(host_concurrency, scihub) if local_fulltext_indexing else None
 
     for p in providers:
-        if local_fulltext_indexing and p in ("crossref", "semantic_scholar"):
+        if downloader and p in ("crossref", "semantic_scholar"):
             provider_instances.append(PROVIDERS[p](downloader=downloader))
         else:
             provider_instances.append(PROVIDERS[p]())
@@ -329,27 +352,12 @@ async def _run_downloads(
     host_concurrency: str | None = None,
 ) -> tuple[int, int]:
     """Run downloads and print progress. Returns (success_count, fail_count)."""
-    from scimesh.download import (
-        Downloader,
-        HostSemaphores,
-        OpenAccessDownloader,
-        SciHubDownloader,
-    )
-
-    # Parse host concurrency limits
-    host_limits, default_limit = _parse_host_concurrency(host_concurrency)
-    host_semaphores = None
-    if host_limits or default_limit:
-        host_semaphores = HostSemaphores(host_limits, default=default_limit)
-
-    downloaders: list[Downloader] = [OpenAccessDownloader(host_semaphores=host_semaphores)]
-    if use_scihub:
-        downloaders.append(SciHubDownloader(host_semaphores=host_semaphores))
+    downloader = _create_downloader(host_concurrency, use_scihub)
 
     success_count = 0
     fail_count = 0
 
-    async for result in download_papers(dois, output_dir, downloaders=downloaders):
+    async for result in download_papers(dois, output_dir, downloaders=[downloader]):
         if result.success:
             print(f"  \u2713 {result.filename} ({result.source})")
             success_count += 1
