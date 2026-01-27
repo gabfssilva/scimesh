@@ -192,6 +192,13 @@ class Arxiv(Provider):
         if id_el is not None and id_el.text:
             arxiv_id = id_el.text.split("/abs/")[-1]
 
+        # PDF URL (arXiv is always open access)
+        pdf_url = None
+        if arxiv_id:
+            # Remove version suffix for consistent PDF URL
+            base_id = arxiv_id.split("v")[0] if "v" in arxiv_id else arxiv_id
+            pdf_url = f"https://arxiv.org/pdf/{base_id}.pdf"
+
         return Paper(
             title=title,
             authors=tuple(authors),
@@ -202,5 +209,51 @@ class Arxiv(Provider):
             url=url,
             topics=tuple(categories),
             publication_date=pub_date,
+            pdf_url=pdf_url,
+            open_access=True,  # arXiv is always open access
             extras={"arxiv_id": arxiv_id} if arxiv_id else {},
         )
+
+    async def get(self, paper_id: str) -> Paper | None:
+        """Fetch a specific paper by arXiv ID.
+
+        Args:
+            paper_id: arXiv ID (e.g., "1908.06954" or "1908.06954v2")
+                or arXiv DOI (e.g., "10.48550/arXiv.1908.06954").
+
+        Returns:
+            Paper if found, None otherwise.
+        """
+        if self._client is None:
+            raise RuntimeError("Provider not initialized. Use 'async with provider:'")
+
+        # Extract arXiv ID from DOI if needed
+        arxiv_id = paper_id
+        if paper_id.startswith("10.48550/arXiv."):
+            arxiv_id = paper_id.replace("10.48550/arXiv.", "")
+        elif paper_id.startswith("10.48550/"):
+            arxiv_id = paper_id.replace("10.48550/", "")
+
+        url = f"{self.BASE_URL}?id_list={arxiv_id}"
+        logger.debug("Fetching: %s", url)
+
+        response = await self._client.get(url)
+        response.raise_for_status()
+
+        root = ET.fromstring(response.text)
+
+        # Check if there are any results
+        entries = root.findall(f"{ATOM_NS}entry")
+        if not entries:
+            return None
+
+        # Parse the first (and should be only) entry
+        entry = entries[0]
+
+        # Check for error (arXiv returns an entry even for invalid IDs)
+        # but with "Error" in the title
+        title_el = entry.find(f"{ATOM_NS}title")
+        if title_el is not None and title_el.text and "Error" in title_el.text:
+            return None
+
+        return self._parse_entry(entry)

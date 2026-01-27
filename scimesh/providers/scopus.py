@@ -3,6 +3,7 @@ import logging
 import os
 from collections.abc import AsyncIterator
 from datetime import date
+from typing import Literal
 from urllib.parse import urlencode
 
 from scimesh.models import Author, Paper
@@ -157,6 +158,16 @@ class Scopus(Provider):
                 if isinstance(area, dict):
                     topics.append(area.get("$", ""))
 
+        # Open access info
+        is_oa = entry.get("openaccessFlag", False)
+
+        # PDF link (if available from open access links)
+        pdf_url = None
+        for link in entry.get("link", []):
+            if link.get("@ref") == "full-text":
+                pdf_url = link.get("@href")
+                break
+
         return Paper(
             title=title,
             authors=tuple(authors),
@@ -169,5 +180,133 @@ class Scopus(Provider):
             citations_count=citations,
             publication_date=pub_date,
             journal=journal,
+            pdf_url=pdf_url,
+            open_access=is_oa,
             extras={"scopus_id": entry.get("dc:identifier")},
         )
+
+    async def get(self, paper_id: str) -> Paper | None:
+        """Fetch a specific paper by DOI or Scopus ID.
+
+        Args:
+            paper_id: DOI (e.g., "10.1038/nature14539") or Scopus ID.
+
+        Returns:
+            Paper if found, None otherwise.
+        """
+        if self._client is None:
+            raise RuntimeError("Provider not initialized. Use 'async with provider:'")
+
+        if not self._api_key:
+            raise ValueError("Scopus requires an API key. Set SCOPUS_API_KEY or pass api_key=")
+
+        # Determine if this is a DOI or Scopus ID
+        if paper_id.startswith("SCOPUS_ID:"):
+            query_str = paper_id
+        elif "/" in paper_id:
+            # Assume DOI
+            query_str = f"DOI({paper_id})"
+        else:
+            # Try as Scopus ID
+            query_str = f"SCOPUS_ID({paper_id})"
+
+        headers = {
+            "X-ELS-APIKey": self._api_key,
+            "Accept": "application/json",
+        }
+
+        params = {
+            "query": query_str,
+            "count": 1,
+            "view": "COMPLETE",
+        }
+
+        url = f"{self.BASE_URL}?{urlencode(params)}"
+        logger.debug("Fetching: %s", url)
+
+        response = await self._client.get(url, headers=headers)
+        response.raise_for_status()
+
+        data = response.json()
+        results = data.get("search-results", {}).get("entry", [])
+
+        if not results:
+            return None
+
+        # Check for error response
+        if "error" in results[0]:
+            return None
+
+        return self._parse_entry(results[0])
+
+    async def citations(
+        self,
+        paper_id: str,
+        direction: Literal["in", "out", "both"] = "both",
+        max_results: int = 100,
+    ) -> AsyncIterator[Paper]:
+        """Get papers citing this paper.
+
+        Note: Scopus API only supports getting papers that cite this paper (direction="in").
+        For references (direction="out"), you need the Scopus Abstract API which requires
+        different entitlements.
+
+        Args:
+            paper_id: DOI or Scopus ID.
+            direction: Only "in" is supported (papers citing this one).
+            max_results: Maximum number of results to return.
+
+        Yields:
+            Paper instances.
+        """
+        if self._client is None:
+            raise RuntimeError("Provider not initialized. Use 'async with provider:'")
+
+        if not self._api_key:
+            raise ValueError("Scopus requires an API key. Set SCOPUS_API_KEY or pass api_key=")
+
+        # Scopus only supports citing papers through search
+        if direction == "out":
+            logger.warning("Scopus does not support fetching references (direction='out')")
+            return
+
+        # First get the paper to find its Scopus ID
+        paper = await self.get(paper_id)
+        if paper is None:
+            return
+
+        scopus_id = paper.extras.get("scopus_id")
+        if not scopus_id:
+            return
+
+        # Remove "SCOPUS_ID:" prefix if present
+        if scopus_id.startswith("SCOPUS_ID:"):
+            scopus_id = scopus_id.replace("SCOPUS_ID:", "")
+
+        headers = {
+            "X-ELS-APIKey": self._api_key,
+            "Accept": "application/json",
+        }
+
+        # Search for papers that cite this one
+        params = {
+            "query": f"REFEID({scopus_id})",
+            "count": min(max_results, 25),
+            "view": "COMPLETE",
+        }
+
+        url = f"{self.BASE_URL}?{urlencode(params)}"
+        logger.debug("Fetching citing papers: %s", url)
+
+        response = await self._client.get(url, headers=headers)
+        response.raise_for_status()
+
+        data = response.json()
+        results = data.get("search-results", {}).get("entry", [])
+
+        for entry in results:
+            if "error" in entry:
+                continue
+            parsed = self._parse_entry(entry)
+            if parsed:
+                yield parsed

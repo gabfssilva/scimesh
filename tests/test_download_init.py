@@ -144,7 +144,9 @@ class TestDownloadPapers:
         downloader = mock_downloader(pdf_bytes=pdf_content)
 
         results = []
-        async for result in download_papers(["10.1234/paper"], tmp_path, downloaders=[downloader]):
+        async for result in download_papers(
+            ["10.1234/paper"], tmp_path, downloaders=[downloader], use_cache=False
+        ):
             results.append(result)
 
         assert len(results) == 1
@@ -165,7 +167,9 @@ class TestDownloadPapers:
         downloader = mock_downloader(pdf_bytes=None)
 
         results = []
-        async for result in download_papers(["10.1234/paper"], tmp_path, downloaders=[downloader]):
+        async for result in download_papers(
+            ["10.1234/paper"], tmp_path, downloaders=[downloader], use_cache=False
+        ):
             results.append(result)
 
         assert len(results) == 1
@@ -183,7 +187,9 @@ class TestDownloadPapers:
 
         dois = ["10.1234/paper1", "10.1234/paper2", "10.1234/paper3"]
         results = []
-        async for result in download_papers(dois, tmp_path, downloaders=[downloader]):
+        async for result in download_papers(
+            dois, tmp_path, downloaders=[downloader], use_cache=False
+        ):
             results.append(result)
 
         assert len(results) == 3
@@ -205,6 +211,7 @@ class TestDownloadPapers:
             ["10.1234/paper"],
             tmp_path,
             downloaders=[first_downloader, second_downloader],
+            use_cache=False,
         ):
             results.append(result)
 
@@ -226,6 +233,7 @@ class TestDownloadPapers:
             ["10.1234/paper"],
             tmp_path,
             downloaders=[failing_downloader, success_downloader],
+            use_cache=False,
         ):
             results.append(result)
 
@@ -244,7 +252,7 @@ class TestDownloadPapers:
 
         results = []
         async for result in download_papers(
-            ["10.1234/paper"], output_dir, downloaders=[downloader]
+            ["10.1234/paper"], output_dir, downloaders=[downloader], use_cache=False
         ):
             results.append(result)
 
@@ -257,7 +265,9 @@ class TestDownloadPapers:
         downloader = mock_downloader(pdf_bytes=b"test")
 
         results = []
-        async for result in download_papers([], tmp_path, downloaders=[downloader]):
+        async for result in download_papers(
+            [], tmp_path, downloaders=[downloader], use_cache=False
+        ):
             results.append(result)
 
         assert len(results) == 0
@@ -269,7 +279,7 @@ class TestDownloadPapers:
         downloader = mock_downloader(pdf_bytes=pdf_content)
 
         dois = ["10.1234/paper1", "10.1234/paper2"]
-        gen = download_papers(dois, tmp_path, downloaders=[downloader])
+        gen = download_papers(dois, tmp_path, downloaders=[downloader], use_cache=False)
 
         # Get first result
         result1 = await gen.__anext__()
