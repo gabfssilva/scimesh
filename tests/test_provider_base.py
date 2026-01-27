@@ -6,4 +6,4 @@ from scimesh.providers.base import Provider
 
 def test_provider_is_abstract():
     with pytest.raises(TypeError):
-        Provider()
+        Provider()  # type: ignore[abstract]

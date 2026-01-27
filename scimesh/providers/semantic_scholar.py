@@ -1,10 +1,12 @@
 # scimesh/providers/semantic_scholar.py
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
 from collections.abc import AsyncIterator
 from datetime import date
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlencode
 
 import httpx
@@ -13,6 +15,9 @@ from scimesh.models import Author, Paper
 from scimesh.providers._fulltext_fallback import FulltextFallbackMixin
 from scimesh.providers.base import Provider
 from scimesh.query.combinators import And, Field, Not, Or, Query, YearRange, has_fulltext
+
+if TYPE_CHECKING:
+    from scimesh.download.base import Downloader
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +33,14 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
 
     name = "semantic_scholar"
     BASE_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        downloader: "Downloader | None" = None,
+    ):
+        super().__init__(api_key)
+        self._downloader = downloader
 
     def _load_from_env(self) -> str | None:
         return os.getenv("SEMANTIC_SCHOLAR_API_KEY")
@@ -165,6 +178,7 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
         # Retry logic for rate limiting (429)
         max_retries = 3
         retry_delay = 1.0
+        response: httpx.Response | None = None
 
         for attempt in range(max_retries):
             try:
@@ -191,6 +205,9 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
                 if attempt == max_retries - 1:
                     raise
                 continue
+
+        if response is None:
+            return
 
         logger.debug("Response status: %s", response.status_code)
 

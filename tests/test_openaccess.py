@@ -127,6 +127,7 @@ class TestDownload:
                     return mock_response_unpaywall
                 return mock_response_pdf
 
+            assert downloader._client is not None
             downloader._client.get = mock_get
 
             result = await downloader.download("10.1234/test.doi")
@@ -160,6 +161,7 @@ class TestDownload:
                     return mock_response_unpaywall
                 return mock_response_pdf
 
+            assert downloader._client is not None
             downloader._client.get = mock_get
 
             result = await downloader.download("10.1234/test.doi")
@@ -191,6 +193,7 @@ class TestDownload:
                     return mock_response_unpaywall
                 return mock_response_pdf
 
+            assert downloader._client is not None
             downloader._client.get = mock_get
 
             result = await downloader.download("10.48550/arXiv.2301.12345")
@@ -214,6 +217,7 @@ class TestDownload:
             async def mock_get(url, **kwargs):
                 return mock_response
 
+            assert downloader._client is not None
             downloader._client.get = mock_get
 
             result = await downloader.download("10.1234/no.pdf.here")
@@ -232,6 +236,7 @@ class TestDownload:
             async def mock_get(url, **kwargs):
                 return mock_response
 
+            assert downloader._client is not None
             downloader._client.get = mock_get
 
             result = await downloader.download("10.1234/not.found")
@@ -267,6 +272,7 @@ class TestDownload:
                     return mock_response_unpaywall
                 return mock_response_pdf
 
+            assert downloader._client is not None
             downloader._client.get = mock_get
 
             await downloader.download("10.1234/test.doi")
@@ -282,6 +288,7 @@ class TestDownload:
             async def mock_get(url, **kwargs):
                 raise httpx.RequestError("Connection failed")
 
+            assert downloader._client is not None
             downloader._client.get = mock_get
 
             result = await downloader.download("10.1234/test.doi")
@@ -302,6 +309,7 @@ class TestDownload:
             async def mock_get(url, **kwargs):
                 return mock_response
 
+            assert downloader._client is not None
             downloader._client.get = mock_get
 
             result = await downloader.download("10.1234/test.doi")

@@ -1,11 +1,18 @@
 # scimesh/download/__init__.py
+import logging
 import re
 from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+import httpx
+
 from scimesh.cache import PaperCache
+
+logger = logging.getLogger(__name__)
 from scimesh.download.base import Downloader
+from scimesh.download.fallback import FallbackDownloader
+from scimesh.download.host_concurrency import HostSemaphores
 from scimesh.download.openaccess import OpenAccessDownloader
 from scimesh.download.scihub import SciHubDownloader
 
@@ -147,8 +154,17 @@ async def _download_single(
                         filename=filename,
                         source=downloader.name,
                     )
-        except Exception:
-            # Continue to next downloader on error
+        except httpx.TimeoutException:
+            logger.debug("Timeout from %s for DOI %s", downloader.name, doi)
+            continue
+        except httpx.HTTPStatusError as e:
+            logger.debug("HTTP %s from %s for DOI %s", e.response.status_code, downloader.name, doi)
+            continue
+        except httpx.RequestError as e:
+            logger.debug("Request error from %s for DOI %s: %s", downloader.name, doi, e)
+            continue
+        except Exception as e:
+            logger.warning("Unexpected error from %s for DOI %s: %s", downloader.name, doi, e)
             continue
 
     return DownloadResult(
@@ -160,6 +176,8 @@ async def _download_single(
 
 __all__ = [
     "Downloader",
+    "FallbackDownloader",
+    "HostSemaphores",
     "OpenAccessDownloader",
     "SciHubDownloader",
     "DownloadResult",

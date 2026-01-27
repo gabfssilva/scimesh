@@ -1,12 +1,18 @@
 # scimesh/download/scihub.py
 """Sci-Hub downloader for scientific papers."""
 
+from __future__ import annotations
+
 import re
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from scimesh.download.base import Downloader
 from scimesh.throttle import throttle
+
+if TYPE_CHECKING:
+    from scimesh.download.host_concurrency import HostSemaphores
 
 
 class SciHubDownloader(Downloader):
@@ -14,6 +20,9 @@ class SciHubDownloader(Downloader):
 
     Sci-Hub domains change frequently, so this downloader tries
     multiple known domains in order until one succeeds.
+
+    Hosts accessed:
+        - sci-hub.se, sci-hub.st, sci-hub.ru (HTML page + PDF download)
     """
 
     name = "scihub"
@@ -25,8 +34,13 @@ class SciHubDownloader(Downloader):
         "sci-hub.ru",
     ]
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, host_semaphores: "HostSemaphores | None" = None):
+        """Initialize the Sci-Hub downloader.
+
+        Args:
+            host_semaphores: Shared per-host semaphores for concurrency control.
+        """
+        super().__init__(host_semaphores=host_semaphores)
 
     def _extract_pdf_url(self, html: str) -> str | None:
         """Extract PDF URL from Sci-Hub HTML response.
@@ -57,6 +71,24 @@ class SciHubDownloader(Downloader):
 
         return None
 
+    async def _get(self, url: str, **kwargs: Any) -> httpx.Response:
+        """Make an HTTP GET request with per-host concurrency control.
+
+        Args:
+            url: The URL to fetch.
+            **kwargs: Additional arguments for httpx.get().
+
+        Returns:
+            The HTTP response.
+        """
+        if self._client is None:
+            raise RuntimeError("Downloader must be used as async context manager")
+
+        if self._host_semaphores:
+            async with self._host_semaphores.acquire(url):
+                return await self._client.get(url, **kwargs)
+        return await self._client.get(url, **kwargs)
+
     async def _attempt_download(self, doi: str, domain: str) -> bytes | None:
         """Attempt to download PDF from a specific Sci-Hub domain.
 
@@ -73,7 +105,7 @@ class SciHubDownloader(Downloader):
         try:
             # Construct Sci-Hub URL
             url = f"https://{domain}/{doi}"
-            response = await self._client.get(url, follow_redirects=True)
+            response = await self._get(url, follow_redirects=True)
 
             if response.status_code != 200:
                 return None
@@ -84,7 +116,7 @@ class SciHubDownloader(Downloader):
                 return None
 
             # Download the PDF
-            pdf_response = await self._client.get(pdf_url, follow_redirects=True)
+            pdf_response = await self._get(pdf_url, follow_redirects=True)
             if pdf_response.status_code == 200:
                 return pdf_response.content
 

@@ -3,7 +3,7 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
-from typing import Literal
+from typing import Literal, Self
 
 import httpx
 
@@ -74,7 +74,7 @@ class Provider(ABC):
         # The yield below is unreachable but required for type checking
         yield  # type: ignore  # pragma: no cover
 
-    async def __aenter__(self) -> "Provider":
+    async def __aenter__(self) -> Self:
         self._client = httpx.AsyncClient(timeout=30.0)
         return self
 

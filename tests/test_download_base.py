@@ -7,7 +7,7 @@ from scimesh.download import Downloader
 def test_downloader_is_abstract():
     """Test that Downloader cannot be instantiated directly."""
     with pytest.raises(TypeError):
-        Downloader()
+        Downloader()  # type: ignore[abstract]
 
 
 def test_downloader_requires_download_method():
@@ -17,4 +17,4 @@ def test_downloader_requires_download_method():
         name = "incomplete"
 
     with pytest.raises(TypeError):
-        IncompleteDownloader()
+        IncompleteDownloader()  # type: ignore[abstract]

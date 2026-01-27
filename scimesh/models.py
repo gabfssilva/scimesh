@@ -2,10 +2,10 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any
+from typing import Any, Callable
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Author:
     """Paper author with optional affiliation and ORCID."""
 
@@ -14,7 +14,7 @@ class Author:
     orcid: str | None = None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Paper:
     """Normalized paper representation across providers."""
 
@@ -39,7 +39,7 @@ class Paper:
     references_count: int | None = None
 
     # Provider-specific fields
-    extras: dict[str, Any] = field(default_factory=dict)
+    extras: dict[str, Any] = field(default_factory=lambda: {})
 
     def __hash__(self) -> int:
         """Hash by DOI if available, else by lowercase title + year."""
@@ -60,8 +60,8 @@ class SearchResult:
     """Container for search results from multiple providers."""
 
     papers: list[Paper]
-    errors: dict[str, Exception] = field(default_factory=dict)
-    total_by_provider: dict[str, int] = field(default_factory=dict)
+    errors: dict[str, Exception] = field(default_factory=lambda: {})
+    total_by_provider: dict[str, int] = field(default_factory=lambda: {})
 
     def dedupe(self) -> "SearchResult":
         """Remove duplicate papers, merging metadata from different sources."""

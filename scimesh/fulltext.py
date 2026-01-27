@@ -224,7 +224,7 @@ def extract_text_from_pdf(pdf_path: Path) -> str | None:
 
     # Fall back to pypdf if available
     try:
-        from pypdf import PdfReader
+        from pypdf import PdfReader  # type: ignore[import-not-found]
 
         reader = PdfReader(pdf_path)
         text_parts = []

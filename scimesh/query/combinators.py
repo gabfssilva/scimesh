@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Query:
     """Base AST node for search queries."""
 
@@ -16,7 +16,7 @@ class Query:
         return Not(self)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Field(Query):
     """Field match: field=value."""
 
@@ -24,7 +24,7 @@ class Field(Query):
     value: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class And(Query):
     """Logical AND of two queries."""
 
@@ -32,7 +32,7 @@ class And(Query):
     right: Query
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Or(Query):
     """Logical OR of two queries."""
 
@@ -40,14 +40,14 @@ class Or(Query):
     right: Query
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Not(Query):
     """Logical NOT of a query."""
 
     operand: Query
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class YearRange(Query):
     """Year range filter."""
 

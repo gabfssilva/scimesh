@@ -10,7 +10,7 @@ class BibtexExporter(Exporter):
     """Export results to BibTeX format."""
 
     def to_string(self, result: SearchResult) -> str:
-        entries = []
+        entries: list[str] = []
         for i, paper in enumerate(result.papers):
             entry = self._paper_to_bibtex(paper, i)
             entries.append(entry)

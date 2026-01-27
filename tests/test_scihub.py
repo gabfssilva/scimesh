@@ -118,6 +118,7 @@ class TestDomainFallback:
                 mock_response.text = ""
                 return mock_response
 
+            assert downloader._client is not None
             downloader._client.get = mock_get
 
             await downloader.download("10.1234/my.doi")
@@ -153,6 +154,7 @@ class TestPDFExtraction:
                     mock_response.text = html_content
                 return mock_response
 
+            assert downloader._client is not None
             downloader._client.get = mock_get
             result = await downloader.download("10.1234/test")
 
@@ -182,6 +184,7 @@ class TestPDFExtraction:
                     mock_response.text = html_content
                 return mock_response
 
+            assert downloader._client is not None
             downloader._client.get = mock_get
             result = await downloader.download("10.1234/test")
 
@@ -213,6 +216,7 @@ class TestPDFExtraction:
                     mock_response.text = html_content
                 return mock_response
 
+            assert downloader._client is not None
             downloader._client.get = mock_get
             result = await downloader.download("10.1234/test")
 
@@ -239,6 +243,7 @@ class TestPDFExtraction:
                 mock_response.text = html_content
                 return mock_response
 
+            assert downloader._client is not None
             downloader._client.get = mock_get
             result = await downloader.download("10.1234/test")
 
@@ -256,6 +261,7 @@ class TestGracefulFailure:
             async def mock_get(url, **kwargs):
                 raise httpx.RequestError("Connection failed")
 
+            assert downloader._client is not None
             downloader._client.get = mock_get
             result = await downloader.download("10.1234/test")
 
@@ -269,6 +275,7 @@ class TestGracefulFailure:
             async def mock_get(url, **kwargs):
                 raise httpx.TimeoutException("Request timed out")
 
+            assert downloader._client is not None
             downloader._client.get = mock_get
             result = await downloader.download("10.1234/test")
 
@@ -285,6 +292,7 @@ class TestGracefulFailure:
                 mock_response.text = "Not found"
                 return mock_response
 
+            assert downloader._client is not None
             downloader._client.get = mock_get
             result = await downloader.download("10.1234/test")
 
@@ -318,6 +326,7 @@ class TestGracefulFailure:
                 mock_response.status_code = 404
                 return mock_response
 
+            assert downloader._client is not None
             downloader._client.get = mock_get
             result = await downloader.download("10.1234/test")
 

@@ -207,6 +207,7 @@ def test_parse_paper_full():
     assert paper.citations_count == 50000
     assert paper.references_count == 35
     assert paper.journal == "NeurIPS"
+    assert paper.publication_date is not None
     assert paper.publication_date.isoformat() == "2017-06-12"
     assert paper.open_access is True
     assert paper.pdf_url == "https://arxiv.org/pdf/1706.03762.pdf"

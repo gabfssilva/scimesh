@@ -172,6 +172,7 @@ def test_parse_item_basic():
     assert paper.doi == "10.1234/test"
     assert paper.url == "https://doi.org/10.1234/test"
     assert paper.year == 2023
+    assert paper.publication_date is not None
     assert paper.publication_date.year == 2023
     assert paper.publication_date.month == 6
     assert paper.publication_date.day == 15

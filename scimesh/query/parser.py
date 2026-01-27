@@ -115,7 +115,7 @@ class Parser:
         self.expect("(")
 
         # Collect value tokens until closing paren
-        value_parts = []
+        value_parts: list[str] = []
         depth = 1
         while depth > 0:
             t = self.consume()
@@ -162,7 +162,7 @@ class Parser:
     def parse_plain_text(self) -> Query:
         """Parse plain text without field specifier as title + abstract search."""
         # Collect consecutive text tokens (not operators or special tokens)
-        text_parts = []
+        text_parts: list[str] = []
         while self.peek() is not None:
             token = self.peek()
             # Stop at operators, parentheses, or field names

@@ -167,6 +167,7 @@ class TestPDFCache:
         cache.save_pdf("10.1234/paper", b"new content")
 
         path = cache.get_pdf_path("10.1234/paper")
+        assert path is not None
         assert path.read_bytes() == b"new content"
 
 
@@ -307,8 +308,10 @@ class TestCacheIsolation:
         cache.save_text("10.1234/paper2", "text2")
 
         # Each paper has its own cached files
-        assert cache.get_pdf_path("10.1234/paper1").read_bytes() == b"pdf1"
-        assert cache.get_pdf_path("10.1234/paper2").read_bytes() == b"pdf2"
+        path1 = cache.get_pdf_path("10.1234/paper1")
+        path2 = cache.get_pdf_path("10.1234/paper2")
+        assert path1 is not None and path1.read_bytes() == b"pdf1"
+        assert path2 is not None and path2.read_bytes() == b"pdf2"
         assert cache.get_text("10.1234/paper1") == "text1"
         assert cache.get_text("10.1234/paper2") == "text2"
 
@@ -405,7 +408,8 @@ class TestCacheIntegrationWithDownload:
         assert results[0].source == "mock"
         # Now should be in cache
         assert cache.has_pdf("10.1234/new") is True
-        assert cache.get_pdf_path("10.1234/new").read_bytes() == pdf_content
+        cached_path = cache.get_pdf_path("10.1234/new")
+        assert cached_path is not None and cached_path.read_bytes() == pdf_content
 
     @pytest.mark.asyncio
     async def test_download_does_not_cache_on_failure(self, mock_downloader, tmp_path):

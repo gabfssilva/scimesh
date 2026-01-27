@@ -8,7 +8,7 @@ class RisExporter(Exporter):
     """Export results to RIS format."""
 
     def to_string(self, result: SearchResult) -> str:
-        entries = []
+        entries: list[str] = []
         for paper in result.papers:
             lines = [
                 "TY  - JOUR",

@@ -2,6 +2,7 @@
 import json
 from dataclasses import asdict
 from datetime import date
+from typing import Any
 
 from scimesh.models import SearchResult
 
@@ -15,7 +16,7 @@ class JsonExporter(Exporter):
         self.indent = indent
 
     def to_string(self, result: SearchResult) -> str:
-        def default_serializer(obj):
+        def default_serializer(obj: Any) -> str:
             if isinstance(obj, date):
                 return obj.isoformat()
             if isinstance(obj, Exception):

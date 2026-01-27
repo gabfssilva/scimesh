@@ -1,18 +1,44 @@
 # scimesh/download/base.py
 """Base class for paper downloaders."""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Self
 
 import httpx
 
+if TYPE_CHECKING:
+    from scimesh.download.host_concurrency import HostSemaphores
+
 
 class Downloader(ABC):
-    """Base class for paper downloaders."""
+    """Base class for paper downloaders.
+
+    Downloaders can use HostSemaphores for per-host concurrency control,
+    allowing fine-grained limits on concurrent requests to each service.
+
+    Example:
+        >>> semaphores = HostSemaphores({
+        ...     "arxiv.org": 2,
+        ...     "api.unpaywall.org": 3,
+        ... })
+        >>> open_access = OpenAccessDownloader(host_semaphores=semaphores)
+        >>> scihub = SciHubDownloader(host_semaphores=semaphores)
+        >>> # Both share the same semaphores - arXiv limited to 2 concurrent
+    """
 
     name: str
 
-    def __init__(self) -> None:
+    def __init__(self, host_semaphores: "HostSemaphores | None" = None) -> None:
+        """Initialize the downloader.
+
+        Args:
+            host_semaphores: Shared per-host semaphores for concurrency control.
+                If None, no concurrency limits are applied. Default: None.
+        """
         self._client: httpx.AsyncClient | None = None
+        self._host_semaphores = host_semaphores
 
     @abstractmethod
     async def download(self, doi: str) -> bytes | None:
@@ -26,7 +52,7 @@ class Downloader(ABC):
         """
         ...
 
-    async def __aenter__(self) -> "Downloader":
+    async def __aenter__(self) -> Self:
         self._client = httpx.AsyncClient(timeout=30.0)
         return self
 

@@ -443,7 +443,7 @@ class TestSearchResultDedupeWithMerge:
         papers = [
             Paper(title="A", authors=(), year=2020, source="arxiv"),
         ]
-        errors = {"scopus": ValueError("API error")}
+        errors: dict[str, Exception] = {"scopus": ValueError("API error")}
         totals = {"arxiv": 10, "scopus": 0}
 
         result = SearchResult(papers=papers, errors=errors, total_by_provider=totals)
