@@ -281,14 +281,15 @@ scimesh search <query> [OPTIONS]
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `-p, --provider` | Providers (comma-separated or repeated): arxiv, openalex, scopus, semantic_scholar, crossref | arxiv, openalex |
-| `-n, --max` | Max results per provider | 100 |
-| `-t, --total` | Max total results across all providers | - |
+| `-p, --provider` | Providers (comma-separated or repeated): arxiv, openalex, scopus, semantic_scholar, crossref | openalex |
+| `-n, --max` | Max total results | 100 |
 | `-f, --format` | Output: tree, csv, json, bibtex, ris | tree |
 | `-o, --output` | Output file path | stdout |
 | `--on-error` | Error handling: fail, warn, ignore | warn |
 | `--no-dedupe` | Disable deduplication | false |
 | `--local-fulltext-indexing` | Auto-download and index PDFs for fulltext (S2/CrossRef) | false |
+| `--scihub` | Enable Sci-Hub fallback for `--local-fulltext-indexing` downloads | false |
+| `--host-concurrency` | Concurrency limit: `3` (all hosts) or `arxiv.org=2,unpaywall.org=3` (per-host) | 5 |
 | `--log-level` | Log level: debug, info, warning, error | - |
 
 ### `scimesh download`
