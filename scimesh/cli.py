@@ -12,7 +12,8 @@ from scimesh import take
 from scimesh.download import download_papers
 from scimesh.export import get_exporter
 from scimesh.export.tree import TreeExporter
-from scimesh.providers import Arxiv, OpenAlex, Scopus
+from scimesh.models import SearchResult
+from scimesh.providers import Arxiv, CrossRef, OpenAlex, Scopus, SemanticScholar
 
 app = cyclopts.App(
     name="scimesh",
@@ -23,6 +24,24 @@ PROVIDERS = {
     "arxiv": Arxiv,
     "openalex": OpenAlex,
     "scopus": Scopus,
+    "semantic_scholar": SemanticScholar,
+    "crossref": CrossRef,
+}
+
+# Providers that support the get() method
+GET_PROVIDERS = {
+    "arxiv": Arxiv,
+    "openalex": OpenAlex,
+    "scopus": Scopus,
+    "semantic_scholar": SemanticScholar,
+    "crossref": CrossRef,
+}
+
+# Providers that support the citations() method
+CITATIONS_PROVIDERS = {
+    "openalex": OpenAlex,
+    "scopus": Scopus,
+    "semantic_scholar": SemanticScholar,
 }
 
 
@@ -69,7 +88,8 @@ def search(
     providers: Annotated[
         list[str],
         cyclopts.Parameter(
-            name=["--provider", "-p"], help="Providers to search (arxiv, openalex, scopus)"
+            name=["--provider", "-p"],
+            help="Providers to search (arxiv, openalex, scopus, semantic_scholar, crossref)",
         ),
     ] = ["arxiv", "openalex"],
     output: Annotated[
@@ -102,6 +122,9 @@ def search(
     ] = False,
 ) -> None:
     """Search for scientific papers across multiple providers."""
+    # Normalize providers (support comma-separated values)
+    providers = [p.strip() for item in providers for p in item.split(",")]
+
     # Validate providers
     invalid = [p for p in providers if p not in PROVIDERS]
     if invalid:
@@ -301,6 +324,281 @@ def download(
     # Print summary
     total = success_count + fail_count
     print(f"Downloaded: {success_count}/{total} | Failed: {fail_count}")
+
+
+async def _get_paper(paper_id: str, providers: list[str]) -> tuple[list, dict]:
+    """Get a paper from multiple providers and return (papers, errors)."""
+    papers = []
+    errors = {}
+
+    for pname in providers:
+        if pname not in GET_PROVIDERS:
+            errors[pname] = Exception(f"Provider {pname} does not support get()")
+            continue
+
+        provider = GET_PROVIDERS[pname]()
+        try:
+            async with provider:
+                paper = await provider.get(paper_id)
+                if paper:
+                    papers.append(paper)
+        except Exception as e:
+            errors[pname] = e
+
+    return papers, errors
+
+
+@app.command(name="get")
+def get(
+    paper_id: Annotated[str, cyclopts.Parameter(help="DOI or provider-specific paper ID")],
+    providers: Annotated[
+        list[str],
+        cyclopts.Parameter(
+            name=["--provider", "-p"],
+            help="Providers to query (openalex, semantic_scholar, crossref, arxiv, scopus)",
+        ),
+    ] = ["openalex", "semantic_scholar"],
+    output: Annotated[
+        Path | None,
+        cyclopts.Parameter(name=["--output", "-o"], help="Output file path"),
+    ] = None,
+    format: Annotated[
+        str,
+        cyclopts.Parameter(
+            name=["--format", "-f"], help="Output format: tree, csv, json, bibtex, ris"
+        ),
+    ] = "tree",
+    merge: Annotated[
+        bool,
+        cyclopts.Parameter(name="--merge", help="Merge results from multiple providers"),
+    ] = True,
+) -> None:
+    """Fetch a specific paper by DOI or ID."""
+    # Normalize providers (support comma-separated values)
+    providers = [p.strip() for item in providers for p in item.split(",")]
+
+    # Validate providers
+    invalid = [p for p in providers if p not in GET_PROVIDERS]
+    if invalid:
+        print(f"Error: Unknown or unsupported providers: {invalid}", file=sys.stderr)
+        print(f"Available: {list(GET_PROVIDERS.keys())}", file=sys.stderr)
+        sys.exit(1)
+
+    # Validate format early
+    try:
+        exporter = get_exporter(format)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Fetch paper from providers
+    papers, errors = asyncio.run(_get_paper(paper_id, providers))
+
+    if not papers:
+        print(f"Error: Paper not found: {paper_id}", file=sys.stderr)
+        for pname, error in errors.items():
+            print(f"  {pname}: {error}", file=sys.stderr)
+        sys.exit(1)
+
+    # Merge results if requested and multiple papers found
+    if merge and len(papers) > 1:
+        from scimesh.models import merge_papers
+
+        papers = [merge_papers(papers)]
+
+    result = SearchResult(papers=papers, errors=errors)
+
+    # Export results
+    if output:
+        exporter.export(result, output)
+        print(f"Exported to {output}")
+    elif format == "tree":
+        tree_exporter = TreeExporter()
+        for paper in papers:
+            print(tree_exporter.format_paper(paper))
+    else:
+        print(exporter.to_string(result))
+
+    # Report errors
+    if errors:
+        for pname, error in errors.items():
+            print(f"[WARN] {pname}: {error}", file=sys.stderr)
+
+
+@app.command(name="index")
+def index_cmd(
+    directory: Annotated[
+        Path,
+        cyclopts.Parameter(help="Directory containing PDF files to index"),
+    ],
+    recursive: Annotated[
+        bool,
+        cyclopts.Parameter(name=["--recursive", "-r"], help="Recursively index subdirectories"),
+    ] = False,
+) -> None:
+    """Index PDF files for fulltext search."""
+    from scimesh.fulltext import FulltextIndex, extract_text_from_pdf
+
+    if not directory.exists():
+        print(f"Error: Directory not found: {directory}", file=sys.stderr)
+        sys.exit(1)
+
+    if not directory.is_dir():
+        print(f"Error: Not a directory: {directory}", file=sys.stderr)
+        sys.exit(1)
+
+    index = FulltextIndex()
+
+    # Find PDF files
+    pattern = "**/*.pdf" if recursive else "*.pdf"
+    pdf_files = list(directory.glob(pattern))
+
+    if not pdf_files:
+        print(f"No PDF files found in {directory}")
+        return
+
+    print(f"Indexing {len(pdf_files)} PDF files...")
+
+    indexed = 0
+    failed = 0
+
+    for pdf_path in pdf_files:
+        # Use filename (without .pdf) as paper ID
+        paper_id = pdf_path.stem
+
+        # Extract text
+        text = extract_text_from_pdf(pdf_path)
+        if text:
+            index.add(paper_id, text)
+            print(f"  [OK] {paper_id}")
+            indexed += 1
+        else:
+            print(f"  [FAIL] {paper_id} - could not extract text")
+            failed += 1
+
+    print(f"\nIndexed: {indexed} | Failed: {failed} | Total in index: {index.count()}")
+
+
+async def _get_citations(
+    paper_id: str, providers: list[str], direction: str, max_results: int
+) -> tuple[list, dict]:
+    """Get citations from multiple providers and return (papers, errors)."""
+    papers = []
+    errors = {}
+
+    for pname in providers:
+        if pname not in CITATIONS_PROVIDERS:
+            errors[pname] = Exception(f"Provider {pname} does not support citations()")
+            continue
+
+        provider = CITATIONS_PROVIDERS[pname]()
+        try:
+            async with provider:
+                count = 0
+                async for paper in provider.citations(paper_id, direction=direction, max_results=max_results):  # type: ignore
+                    papers.append(paper)
+                    count += 1
+                    if count >= max_results:
+                        break
+        except NotImplementedError:
+            errors[pname] = Exception(f"Provider {pname} does not support citations()")
+        except Exception as e:
+            errors[pname] = e
+
+    return papers, errors
+
+
+@app.command(name="citations")
+def citations(
+    paper_id: Annotated[str, cyclopts.Parameter(help="DOI or provider-specific paper ID")],
+    direction: Annotated[
+        str,
+        cyclopts.Parameter(
+            name=["--direction", "-d"],
+            help="Citation direction: in (citing this paper), out (cited by this paper), both",
+        ),
+    ] = "both",
+    providers: Annotated[
+        list[str],
+        cyclopts.Parameter(
+            name=["--provider", "-p"],
+            help="Providers to query (openalex, semantic_scholar, scopus)",
+        ),
+    ] = ["openalex"],
+    output: Annotated[
+        Path | None,
+        cyclopts.Parameter(name=["--output", "-o"], help="Output file path"),
+    ] = None,
+    format: Annotated[
+        str,
+        cyclopts.Parameter(
+            name=["--format", "-f"], help="Output format: tree, csv, json, bibtex, ris"
+        ),
+    ] = "tree",
+    max_results: Annotated[
+        int,
+        cyclopts.Parameter(name=["--max", "-n"], help="Maximum number of results"),
+    ] = 100,
+    no_dedupe: Annotated[
+        bool,
+        cyclopts.Parameter(name="--no-dedupe", help="Disable deduplication"),
+    ] = False,
+) -> None:
+    """Get papers citing or cited by a specific paper."""
+    # Validate direction
+    if direction not in ("in", "out", "both"):
+        print(f"Error: Invalid direction: {direction}", file=sys.stderr)
+        print("Valid options: in, out, both", file=sys.stderr)
+        sys.exit(1)
+
+    # Normalize providers (support comma-separated values)
+    providers = [p.strip() for item in providers for p in item.split(",")]
+
+    # Validate providers
+    invalid = [p for p in providers if p not in CITATIONS_PROVIDERS]
+    if invalid:
+        print(f"Error: Unknown or unsupported providers: {invalid}", file=sys.stderr)
+        print(f"Available: {list(CITATIONS_PROVIDERS.keys())}", file=sys.stderr)
+        sys.exit(1)
+
+    # Validate format early
+    try:
+        exporter = get_exporter(format)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Fetch citations from providers
+    papers, errors = asyncio.run(_get_citations(paper_id, providers, direction, max_results))
+
+    if not papers and not errors:
+        print(f"No citations found for: {paper_id}", file=sys.stderr)
+        sys.exit(0)
+
+    result = SearchResult(papers=papers, errors=errors)
+
+    # Dedupe if requested
+    if not no_dedupe:
+        result = result.dedupe()
+
+    # Export results
+    if output:
+        exporter.export(result, output)
+        print(f"Exported {len(result.papers)} papers to {output}")
+    elif format == "tree":
+        tree_exporter = TreeExporter()
+        for i, paper in enumerate(result.papers):
+            if i > 0:
+                print()
+            print(tree_exporter.format_paper(paper))
+        print(f"\nTotal: {len(result.papers)} papers", file=sys.stderr)
+    else:
+        print(exporter.to_string(result))
+
+    # Report errors
+    if errors:
+        for pname, error in errors.items():
+            print(f"[WARN] {pname}: {error}", file=sys.stderr)
 
 
 def main() -> None:

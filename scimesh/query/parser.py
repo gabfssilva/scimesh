@@ -92,6 +92,9 @@ class Parser:
     def parse_primary(self) -> Query:
         token = self.peek()
 
+        if token is None:
+            raise SyntaxError("Unexpected end of query")
+
         if token == "(":
             self.consume()
             expr = self.parse_or()
@@ -104,7 +107,8 @@ class Parser:
         if token in FIELD_MAP:
             return self.parse_field()
 
-        raise SyntaxError(f"Unexpected token: {token}")
+        # Plain text without field specifier: treat as title + abstract search
+        return self.parse_plain_text()
 
     def parse_field(self) -> Query:
         field_name = self.consume()
@@ -154,6 +158,24 @@ class Parser:
             return YearRange(start=None, end=year_val)
         else:
             raise SyntaxError(f"Unknown PUBYEAR operator: {op}")
+
+    def parse_plain_text(self) -> Query:
+        """Parse plain text without field specifier as title + abstract search."""
+        # Collect consecutive text tokens (not operators or special tokens)
+        text_parts = []
+        while self.peek() is not None:
+            token = self.peek()
+            # Stop at operators, parentheses, or field names
+            if token in ("AND", "AND NOT", "OR", "(", ")", "PUBYEAR") or token in FIELD_MAP:
+                break
+            text_parts.append(self.consume())
+
+        if not text_parts:
+            raise SyntaxError("Expected text")
+
+        value = " ".join(text_parts)
+        # Search in both title and abstract (like TITLE-ABS)
+        return Or(Field("title", value), Field("abstract", value))
 
 
 def parse(query: str) -> Query:

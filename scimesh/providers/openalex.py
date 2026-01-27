@@ -2,6 +2,7 @@
 import logging
 from collections.abc import AsyncIterator
 from datetime import date
+from typing import Literal
 from urllib.parse import urlencode
 
 from scimesh.models import Author, Paper
@@ -37,8 +38,11 @@ class OpenAlex(Provider):
     def _collect_params(self, query: Query, search_terms: list[str], filters: list[str]) -> None:
         """Recursively collect search terms and filters from query AST."""
         match query:
-            case Field(field="title" | "abstract" | "keyword" | "fulltext", value=v):
+            case Field(field="title" | "abstract" | "keyword", value=v):
                 search_terms.append(v)
+            case Field(field="fulltext", value=v):
+                # OpenAlex has native fulltext search via fulltext.search filter
+                filters.append(f"fulltext.search:{v}")
             case Field(field="author", value=v):
                 filters.append(f"raw_author_name.search:{v}")
             case Field(field="doi", value=v):
@@ -165,6 +169,14 @@ class OpenAlex(Provider):
         if source:
             journal = source.get("display_name")
 
+        # Open access info
+        open_access_info = work.get("open_access", {})
+        is_oa = open_access_info.get("is_oa", False)
+        pdf_url = open_access_info.get("oa_url")
+
+        # References count
+        references_count = work.get("referenced_works_count")
+
         return Paper(
             title=title,
             authors=tuple(authors),
@@ -177,6 +189,9 @@ class OpenAlex(Provider):
             citations_count=citations,
             publication_date=pub_date,
             journal=journal,
+            pdf_url=pdf_url,
+            open_access=is_oa,
+            references_count=references_count,
             extras={"openalex_id": work.get("id")},
         )
 
@@ -188,3 +203,119 @@ class OpenAlex(Provider):
                 words.append((pos, word))
         words.sort(key=lambda x: x[0])
         return " ".join(word for _, word in words)
+
+    async def get(self, paper_id: str) -> Paper | None:
+        """Fetch a specific paper by DOI or OpenAlex ID.
+
+        Args:
+            paper_id: DOI (e.g., "10.1038/nature14539") or OpenAlex ID
+                (e.g., "W2741809807")
+
+        Returns:
+            Paper if found, None otherwise.
+        """
+        if self._client is None:
+            raise RuntimeError("Provider not initialized. Use 'async with provider:'")
+
+        # Determine if this is a DOI or OpenAlex ID
+        if paper_id.startswith("W") or paper_id.startswith("https://openalex.org/"):
+            url = f"https://api.openalex.org/works/{paper_id}"
+        else:
+            # Assume it's a DOI
+            doi = paper_id
+            if not doi.startswith("https://doi.org/"):
+                doi = f"https://doi.org/{doi}"
+            url = f"https://api.openalex.org/works/{doi}"
+
+        params: dict[str, str] = {}
+        if self._mailto:
+            params["mailto"] = self._mailto
+
+        if params:
+            url = f"{url}?{urlencode(params)}"
+
+        logger.debug("Fetching: %s", url)
+        response = await self._client.get(url)
+
+        if response.status_code == 404:
+            return None
+
+        response.raise_for_status()
+        work = response.json()
+        return self._parse_work(work)
+
+    async def citations(
+        self,
+        paper_id: str,
+        direction: Literal["in", "out", "both"] = "both",
+        max_results: int = 100,
+    ) -> AsyncIterator[Paper]:
+        """Get papers citing this paper (in) or cited by this paper (out).
+
+        Args:
+            paper_id: DOI or OpenAlex ID.
+            direction: "in" for papers citing this one, "out" for papers cited
+                by this one, "both" for all.
+            max_results: Maximum number of results to return.
+
+        Yields:
+            Paper instances.
+        """
+        if self._client is None:
+            raise RuntimeError("Provider not initialized. Use 'async with provider:'")
+
+        # First, get the OpenAlex ID for this paper
+        paper = await self.get(paper_id)
+        if paper is None:
+            return
+
+        openalex_id = paper.extras.get("openalex_id")
+        if not openalex_id:
+            return
+
+        # Extract the work ID from the OpenAlex URL
+        work_id = openalex_id.split("/")[-1]
+
+        params: dict[str, str | int] = {
+            "per_page": min(max_results, 200),
+        }
+        if self._mailto:
+            params["mailto"] = self._mailto
+
+        count = 0
+
+        # Get citing papers (papers that cite this one)
+        if direction in ("in", "both"):
+            params["filter"] = f"cites:{work_id}"
+            url = f"{self.BASE_URL}?{urlencode(params)}"
+            logger.debug("Fetching citing papers: %s", url)
+
+            response = await self._client.get(url)
+            response.raise_for_status()
+            data = response.json()
+
+            for work in data.get("results", []):
+                if count >= max_results:
+                    return
+                parsed = self._parse_work(work)
+                if parsed:
+                    yield parsed
+                    count += 1
+
+        # Get referenced papers (papers cited by this one)
+        if direction in ("out", "both"):
+            params["filter"] = f"cited_by:{work_id}"
+            url = f"{self.BASE_URL}?{urlencode(params)}"
+            logger.debug("Fetching referenced papers: %s", url)
+
+            response = await self._client.get(url)
+            response.raise_for_status()
+            data = response.json()
+
+            for work in data.get("results", []):
+                if count >= max_results:
+                    return
+                parsed = self._parse_work(work)
+                if parsed:
+                    yield parsed
+                    count += 1

@@ -35,7 +35,8 @@ def test_translate_fulltext():
     provider = OpenAlex()
     q = fulltext("neural network")
     search, filters = provider._build_params(q)
-    assert "neural network" in search
+    # OpenAlex has native fulltext search via fulltext.search filter
+    assert "fulltext.search:neural network" in filters
 
 
 def test_translate_and():

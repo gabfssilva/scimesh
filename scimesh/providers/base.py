@@ -3,6 +3,7 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
+from typing import Literal
 
 import httpx
 
@@ -32,6 +33,46 @@ class Provider(ABC):
     ) -> AsyncIterator[Paper]:
         """Execute search and yield papers."""
         ...
+
+    async def get(self, paper_id: str) -> Paper | None:
+        """Fetch a specific paper by DOI or provider-specific ID.
+
+        Args:
+            paper_id: DOI or provider-specific identifier.
+
+        Returns:
+            Paper if found, None otherwise.
+
+        Note:
+            Subclasses should override this method for better performance.
+            Default implementation raises NotImplementedError.
+        """
+        raise NotImplementedError(f"{self.name} does not support get()")
+
+    def citations(
+        self,
+        paper_id: str,
+        direction: Literal["in", "out", "both"] = "both",
+        max_results: int = 100,
+    ) -> AsyncIterator[Paper]:
+        """Get papers citing this paper (in) or cited by this paper (out).
+
+        Args:
+            paper_id: DOI or provider-specific identifier.
+            direction: "in" for papers citing this one, "out" for papers cited
+                by this one, "both" for all (default).
+            max_results: Maximum number of results to return.
+
+        Yields:
+            Paper instances.
+
+        Note:
+            Subclasses should override this method if they support citations.
+            Default implementation raises NotImplementedError.
+        """
+        raise NotImplementedError(f"{self.name} does not support citations()")
+        # The yield below is unreachable but required for type checking
+        yield  # type: ignore  # pragma: no cover
 
     async def __aenter__(self) -> "Provider":
         self._client = httpx.AsyncClient(timeout=30.0)

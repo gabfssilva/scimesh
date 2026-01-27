@@ -7,15 +7,19 @@
 
 A Python library for systematic literature search across multiple academic databases.
 
-Search arXiv, OpenAlex, and Scopus with a unified API. Export to BibTeX, RIS, CSV, or JSON. Download PDFs via Open Access (Unpaywall).
+Search arXiv, OpenAlex, Scopus, Semantic Scholar, and CrossRef with a unified API. Export to BibTeX, RIS, CSV, or JSON. Download PDFs via Open Access (Unpaywall). Index and search full-text content locally.
 
 ## Features
 
-- **Multi-provider search** - arXiv, OpenAlex, Scopus (parallel queries)
+- **Multi-provider search** - arXiv, OpenAlex, Scopus, Semantic Scholar, CrossRef (parallel queries)
 - **Scopus-style query syntax** - `TITLE(transformers) AND AUTHOR(Vaswani)`
 - **Programmatic query API** - Compose queries with Python operators (`&`, `|`, `~`)
 - **Export formats** - BibTeX, RIS, CSV, JSON
-- **PDF download** - Open Access via Unpaywall (Sci-Hub opt-in)
+- **PDF download** - Open Access via Unpaywall (Sci-Hub opt-in) with local caching
+- **Fetch specific papers** - Get paper metadata by DOI with `scimesh get`
+- **Citation graph** - Get papers citing or cited by a paper with `scimesh citations`
+- **Fulltext search** - Index PDFs locally and search their content with SQLite FTS5
+- **Metadata merging** - Combine paper data from multiple sources for richer results
 - **Async streaming** - Results arrive as they're found
 - **Automatic deduplication** - By DOI or title+year across providers
 
@@ -53,11 +57,26 @@ pip install scimesh
 # Search arXiv and OpenAlex (default providers)
 scimesh search "TITLE(transformer) AND AUTHOR(Vaswani)"
 
+# Search multiple providers (comma-separated)
+scimesh search "TITLE(BERT)" -p arxiv,openalex,crossref
+
 # Export to BibTeX
 scimesh search "TITLE(BERT)" -f bibtex -o papers.bib
 
 # Download PDFs from search results
 scimesh search "TITLE(attention)" -f json | scimesh download -o ./pdfs
+
+# Get a specific paper by DOI
+scimesh get "10.1038/nature14539"
+
+# Get papers citing a specific paper
+scimesh citations "10.1038/nature14539" --direction in
+
+# Index PDFs for fulltext search
+scimesh index ./papers/
+
+# Full text search (uses native API for arXiv/Scopus, local index for others)
+scimesh search "ALL(attention mechanism)"
 ```
 
 ### Python API
@@ -89,6 +108,16 @@ asyncio.run(main())
 ### Scopus-Style Strings
 
 The library parses Scopus-compatible query strings automatically.
+
+**Plain Text Search:**
+
+You can search without field specifiers - plain text searches in both title and abstract:
+
+```bash
+scimesh search "transformers"                    # Same as TITLE-ABS(transformers)
+scimesh search "attention mechanism"             # Searches title OR abstract
+scimesh search "deep learning AND PUBYEAR > 2020"  # Can combine with operators
+```
 
 **Field Operators:**
 
@@ -252,7 +281,7 @@ scimesh search <query> [OPTIONS]
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `-p, --provider` | Providers: arxiv, openalex, scopus | arxiv, openalex |
+| `-p, --provider` | Providers (comma-separated or repeated): arxiv, openalex, scopus, semantic_scholar, crossref | arxiv, openalex |
 | `-n, --max` | Max results per provider | 100 |
 | `-t, --total` | Max total results across all providers | - |
 | `-f, --format` | Output: tree, csv, json, bibtex, ris | tree |
@@ -292,6 +321,101 @@ Requires `UNPAYWALL_EMAIL` env var for Open Access.
 
 > **Disclaimer**: Sci-Hub is disabled by default. The `--scihub` flag enables it as a fallback when Open Access sources fail. Sci-Hub may violate copyright laws in your jurisdiction. Use at your own discretion and risk.
 
+### `scimesh get`
+
+Fetch metadata for a specific paper by DOI.
+
+```bash
+scimesh get <paper_id> [OPTIONS]
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-p, --provider` | Providers (comma-separated): openalex, semantic_scholar, crossref, arxiv, scopus | openalex, semantic_scholar |
+| `-f, --format` | Output: tree, json, bibtex, ris | tree |
+| `-o, --output` | Output file path | stdout |
+| `--merge` | Merge results from multiple providers | true |
+
+**Examples:**
+
+```bash
+# Get paper by DOI (merges data from multiple providers)
+scimesh get "10.1038/nature14539"
+
+# Get from specific providers
+scimesh get "10.1038/nature14539" -p openalex,crossref
+
+# Export to BibTeX
+scimesh get "10.1038/nature14539" -f bibtex -o paper.bib
+
+# Get arXiv paper by ID
+scimesh get "1706.03762" --provider arxiv
+```
+
+### `scimesh citations`
+
+Get papers citing or cited by a specific paper.
+
+```bash
+scimesh citations <paper_id> [OPTIONS]
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-p, --provider` | Providers (comma-separated): openalex, semantic_scholar, scopus | openalex |
+| `-d, --direction` | Citation direction: in, out, both | both |
+| `-n, --max` | Max results | 100 |
+| `-f, --format` | Output: tree, csv, json, bibtex, ris | tree |
+| `-o, --output` | Output file path | stdout |
+
+**Directions:**
+- `in` - Papers that cite this paper (incoming citations)
+- `out` - Papers that this paper cites (references)
+- `both` - Both directions
+
+**Examples:**
+
+```bash
+# Get papers citing a DOI
+scimesh citations "10.1038/nature14539" --direction in
+
+# Get references (papers cited by this paper)
+scimesh citations "10.1038/nature14539" --direction out
+
+# From Semantic Scholar with limit
+scimesh citations "10.1038/nature14539" -p semantic_scholar -n 50
+
+# Export to JSON
+scimesh citations "10.1038/nature14539" -f json -o citations.json
+```
+
+### `scimesh index`
+
+Index PDFs for fulltext search.
+
+```bash
+scimesh index <directory> [OPTIONS]
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--clear` | Clear existing index before indexing | false |
+
+**Examples:**
+
+```bash
+# Index all PDFs in a directory
+scimesh index ./papers/
+
+# Clear and re-index
+scimesh index ./papers/ --clear
+
+# Then search indexed content with ALL()
+scimesh search "ALL(attention mechanism)"
+```
+
+The index is stored at `~/.scimesh/fulltext.db` using SQLite FTS5.
+
 ---
 
 ## Providers
@@ -301,15 +425,105 @@ Requires `UNPAYWALL_EMAIL` env var for Open Access.
 | arXiv | No | Preprints |
 | OpenAlex | No | 61M+ papers, largest open database |
 | Scopus | `SCOPUS_API_KEY` | Requires institutional access |
+| Semantic Scholar | `SEMANTIC_SCHOLAR_API_KEY` (optional) | 200M+ papers, citation graph |
+| CrossRef | `CROSSREF_API_KEY` (optional) | DOI metadata, references |
 
 ```python
-from scimesh.providers import Arxiv, OpenAlex, Scopus
+from scimesh.providers import Arxiv, OpenAlex, Scopus, SemanticScholar, CrossRef
 
 providers = [
     Arxiv(),
     OpenAlex(mailto="you@example.com"),  # Optional, for polite pool
     Scopus(),  # Uses SCOPUS_API_KEY env var
+    SemanticScholar(),  # Optional API key for higher rate limits
+    CrossRef(mailto="you@example.com"),  # Optional, for polite pool
 ]
+```
+
+### Provider Capabilities
+
+| Provider | search | get | citations |
+|----------|--------|-----|-----------|
+| arXiv | Yes | Yes | No |
+| OpenAlex | Yes | Yes | Yes (in/out) |
+| Scopus | Yes | Yes | Yes (in only) |
+| Semantic Scholar | Yes | Yes | Yes (in/out) |
+| CrossRef | Yes | Yes | No |
+
+---
+
+## PDF Caching
+
+Downloaded PDFs are automatically cached at `~/.scimesh/cache/pdfs/`. This avoids re-downloading the same papers.
+
+```python
+from scimesh.download import download_papers, PaperCache
+
+# Cache is enabled by default
+async for result in download_papers(papers, output_dir):
+    print(f"{result.doi}: {result.source}")  # source="cache" if cached
+
+# Disable cache if needed
+async for result in download_papers(papers, output_dir, use_cache=False):
+    ...
+
+# Access cache directly
+cache = PaperCache()
+if cache.has_pdf("10.1038/nature14539"):
+    path = cache.get_pdf_path("10.1038/nature14539")
+```
+
+---
+
+## Fulltext Search
+
+Index PDFs locally and search their content using SQLite FTS5. The `ALL(...)` operator works transparently across all providers:
+
+- **arXiv, Scopus, OpenAlex**: Use native fulltext search APIs
+- **Semantic Scholar, CrossRef**: Search API with local FTS5 filter
+
+**Important**: For providers without native fulltext support (Semantic Scholar, CrossRef), you must provide additional filters (title, author, etc.) along with `ALL()`. The search uses API results filtered by your local index.
+
+```bash
+# Index PDFs first (needed for S2/CrossRef fulltext)
+scimesh index ./papers/
+
+# arXiv/Scopus/OpenAlex: native fulltext (no additional filters needed)
+scimesh search "ALL(attention mechanism)" -p arxiv
+scimesh search "ALL(attention mechanism)" -p openalex
+
+# Semantic Scholar/CrossRef: requires additional filter + local index
+scimesh search "ALL(CRISPR) AND AUTHOR(Doudna)" -p crossref
+scimesh search "ALL(transformer) AND TITLE(bert)" -p semantic_scholar
+```
+
+**Python API:**
+
+```python
+from scimesh.fulltext import FulltextIndex, extract_text_from_pdf
+from pathlib import Path
+
+# Create or open index
+index = FulltextIndex()  # Default: ~/.scimesh/fulltext.db
+
+# Index a PDF
+text = extract_text_from_pdf(Path("paper.pdf"))
+if text:
+    index.add("10.1234/paper", text)
+
+# Search
+results = index.search("transformer architecture")  # Returns list of paper IDs
+
+# FTS5 syntax supported
+results = index.search('"attention mechanism"')  # Phrase search
+results = index.search("deep OR statistical")     # OR search
+
+# Check if indexed
+if index.has("10.1234/paper"):
+    print("Paper is indexed")
+
+# List all indexed papers
+papers = index.list_papers()
 ```
 
 ---

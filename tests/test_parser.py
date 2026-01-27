@@ -76,3 +76,35 @@ def test_parse_with_parentheses():
 def test_parse_all_fulltext():
     q = parse("ALL(attention mechanism)")
     assert q == Field("fulltext", "attention mechanism")
+
+
+def test_parse_plain_text():
+    """Plain text without field specifier searches title and abstract."""
+    q = parse("transformers")
+    assert isinstance(q, Or)
+    assert q.left == Field("title", "transformers")
+    assert q.right == Field("abstract", "transformers")
+
+
+def test_parse_plain_text_multi_word():
+    """Multi-word plain text."""
+    q = parse("attention mechanism")
+    assert isinstance(q, Or)
+    assert q.left == Field("title", "attention mechanism")
+    assert q.right == Field("abstract", "attention mechanism")
+
+
+def test_parse_plain_text_with_and():
+    """Plain text combined with field specifier."""
+    q = parse("transformers AND AUTHOR(Vaswani)")
+    assert isinstance(q, And)
+    assert isinstance(q.left, Or)  # title OR abstract
+    assert q.right == Field("author", "Vaswani")
+
+
+def test_parse_plain_text_with_year():
+    """Plain text with year filter."""
+    q = parse("deep learning AND PUBYEAR > 2020")
+    assert isinstance(q, And)
+    assert isinstance(q.left, Or)  # title OR abstract
+    assert q.right == YearRange(start=2021, end=None)
