@@ -113,16 +113,16 @@ def test_cli_invalid_provider(capsys):
 
 @patch("scimesh.cli.do_search")
 def test_cli_search_with_max_results(mock_search, mock_search_result):
-    """Test max results with non-streaming format."""
+    """Test max results truncates results after search."""
     mock_search.side_effect = make_search_side_effect(mock_search_result)
 
     with pytest.raises(SystemExit) as exc_info:
         app(["search", "TITLE(test)", "-p", "arxiv", "-n", "50", "-f", "csv"])
 
     assert exc_info.value.code == 0
+    # max_results is no longer passed to do_search - it's used to truncate results
     call_args = mock_search.call_args
-    max_results = call_args.kwargs.get("max_results")
-    assert max_results == 50
+    assert "max_results" not in call_args.kwargs
 
 
 @patch("scimesh.cli.do_search")
@@ -165,24 +165,6 @@ def test_cli_search_ris_format(mock_search, mock_search_result, tmp_path):
     assert output_file.exists()
     content = output_file.read_text()
     assert "TY  -" in content  # RIS entries start with TY
-
-
-@patch("scimesh.cli.do_search")
-def test_cli_search_with_errors(mock_search, capsys):
-    """Test that errors are reported to stderr with non-streaming format."""
-    result = SearchResult(
-        papers=[],
-        total_by_provider={},
-        errors={"arxiv": Exception("Connection failed")},
-    )
-    mock_search.side_effect = make_search_side_effect(result)
-
-    with pytest.raises(SystemExit) as exc_info:
-        app(["search", "TITLE(test)", "-p", "arxiv", "-f", "csv"])
-
-    assert exc_info.value.code == 0
-    captured = capsys.readouterr()
-    assert "[WARN]" in captured.err or "arxiv" in captured.err
 
 
 def test_cli_invalid_format(capsys, tmp_path):

@@ -124,7 +124,6 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
     async def search(
         self,
         query: Query,
-        max_results: int = 100,
     ) -> AsyncIterator[Paper]:
         """Search Semantic Scholar and yield papers."""
         if self._client is None:
@@ -132,17 +131,16 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
 
         # Use local fulltext fallback for fulltext queries
         if has_fulltext(query):
-            async for paper in self._search_with_fulltext_filter(query, max_results):
+            async for paper in self._search_with_fulltext_filter(query):
                 yield paper
             return
 
-        async for paper in self._search_api(query, max_results):
+        async for paper in self._search_api(query):
             yield paper
 
     async def _search_api(
         self,
         query: Query,
-        max_results: int = 100,
     ) -> AsyncIterator[Paper]:
         """Execute the actual Semantic Scholar API search."""
         if self._client is None:
@@ -158,7 +156,7 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
 
         params: dict[str, str | int] = {
             "query": query_str,
-            "limit": min(max_results, 100),  # Semantic Scholar max is 100
+            "limit": 100,  # Semantic Scholar max is 100
             "fields": API_FIELDS,
         }
 

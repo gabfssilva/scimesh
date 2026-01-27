@@ -86,7 +86,6 @@ class CrossRef(FulltextFallbackMixin, Provider):
     async def search(
         self,
         query: Query,
-        max_results: int = 100,
     ) -> AsyncIterator[Paper]:
         """Search CrossRef and yield papers."""
         if self._client is None:
@@ -94,17 +93,16 @@ class CrossRef(FulltextFallbackMixin, Provider):
 
         # Use local fulltext fallback for fulltext queries
         if has_fulltext(query):
-            async for paper in self._search_with_fulltext_filter(query, max_results):
+            async for paper in self._search_with_fulltext_filter(query):
                 yield paper
             return
 
-        async for paper in self._search_api(query, max_results):
+        async for paper in self._search_api(query):
             yield paper
 
     async def _search_api(
         self,
         query: Query,
-        max_results: int = 100,
     ) -> AsyncIterator[Paper]:
         """Execute the actual CrossRef API search."""
         if self._client is None:
@@ -115,7 +113,7 @@ class CrossRef(FulltextFallbackMixin, Provider):
         logger.debug("Filters: %s", filters)
 
         params: dict[str, str | int] = {
-            "rows": min(max_results, 1000),  # CrossRef max is 1000
+            "rows": 1000,  # CrossRef max is 1000
         }
 
         if query_terms:

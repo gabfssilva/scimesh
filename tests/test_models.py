@@ -52,11 +52,9 @@ def test_search_result_dedupe():
     assert deduped.papers[1].title == "Paper B"
 
 
-def test_search_result_with_errors():
+def test_search_result_total_by_provider():
     result = SearchResult(
         papers=[],
-        errors={"scopus": ValueError("Rate limit")},
         total_by_provider={"arxiv": 10},
     )
-    assert "scopus" in result.errors
     assert result.total_by_provider["arxiv"] == 10

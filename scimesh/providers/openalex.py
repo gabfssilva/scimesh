@@ -73,7 +73,6 @@ class OpenAlex(Provider):
     async def search(
         self,
         query: Query,
-        max_results: int = 100,
     ) -> AsyncIterator[Paper]:
         """Search OpenAlex and yield papers."""
         if self._client is None:
@@ -84,7 +83,7 @@ class OpenAlex(Provider):
         logger.debug("Filters: %s", filter_str)
 
         params: dict[str, str | int] = {
-            "per_page": min(max_results, 200),  # OpenAlex max is 200
+            "per_page": 200,  # OpenAlex max is 200
         }
 
         if self._mailto:

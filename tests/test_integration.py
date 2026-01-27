@@ -14,7 +14,6 @@ async def test_full_workflow_with_combinators():
     result = await search(
         q,
         providers=[Arxiv(), OpenAlex()],
-        max_results=5,
         on_error="ignore",
     )
 
@@ -29,7 +28,6 @@ async def test_full_workflow_with_string_query():
     result = await search(
         "TITLE(attention) AND AUTHOR(Vaswani)",
         providers=[Arxiv()],
-        max_results=3,
         on_error="ignore",
     )
 

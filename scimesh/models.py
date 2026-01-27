@@ -60,8 +60,7 @@ class SearchResult:
     """Container for search results from multiple providers."""
 
     papers: list[Paper]
-    errors: dict[str, Exception] = field(default_factory=lambda: {})
-    total_by_provider: dict[str, int] = field(default_factory=lambda: {})
+    total_by_provider: dict[str, int] = field(default_factory=dict)
 
     def dedupe(self) -> "SearchResult":
         """Remove duplicate papers, merging metadata from different sources."""
@@ -80,7 +79,6 @@ class SearchResult:
 
         return SearchResult(
             papers=unique,
-            errors=self.errors,
             total_by_provider=self.total_by_provider,
         )
 

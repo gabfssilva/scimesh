@@ -39,9 +39,9 @@ class MockProvider(FulltextFallbackMixin):
         self._papers = papers
         self._downloader = downloader
 
-    async def _search_api(self, query: Query, max_results: int) -> AsyncIterator[Paper]:
+    async def _search_api(self, query: Query) -> AsyncIterator[Paper]:
         """Return mock papers."""
-        for paper in self._papers[:max_results]:
+        for paper in self._papers:
             yield paper
 
 
@@ -110,7 +110,7 @@ class TestFulltextFallbackMixin:
         with patch("scimesh.providers._fulltext_fallback.FulltextIndex", return_value=temp_index):
             query = title("learning") & fulltext("transformer")
             results = []
-            async for paper in provider._search_with_fulltext_filter(query, max_results=10):
+            async for paper in provider._search_with_fulltext_filter(query):
                 results.append(paper)
 
         # Only the pre-indexed paper should be returned
@@ -138,7 +138,7 @@ class TestFulltextFallbackMixin:
             with patch.object(provider, "_try_download_single", side_effect=mock_download):
                 query = title("learning") & fulltext("transformer")
                 results = []
-                async for paper in provider._search_with_fulltext_filter(query, max_results=10):
+                async for paper in provider._search_with_fulltext_filter(query):
                     results.append(paper)
 
         # Papers with DOIs that were downloaded and matched should be returned
@@ -171,7 +171,7 @@ class TestFulltextFallbackMixin:
             with patch.object(provider, "_try_download_single", side_effect=mock_download_fail):
                 query = title("learning") & fulltext("transformer")
                 results = []
-                async for paper in provider._search_with_fulltext_filter(query, max_results=10):
+                async for paper in provider._search_with_fulltext_filter(query):
                     results.append(paper)
 
         # Should still return the pre-indexed paper
@@ -208,7 +208,7 @@ class TestFulltextFallbackMixin:
         ):
             query = title("paper") & fulltext("searchterm")
             results = []
-            async for paper in provider._search_with_fulltext_filter(query, max_results=10):
+            async for paper in provider._search_with_fulltext_filter(query):
                 results.append(paper)
 
         # All papers should have been processed
@@ -216,10 +216,10 @@ class TestFulltextFallbackMixin:
         assert len(results) == 5
 
     @pytest.mark.asyncio
-    async def test_pre_indexed_papers_returned_without_download(
+    async def test_pre_indexed_papers_returned_immediately(
         self, temp_index, sample_papers
     ):
-        """Pre-indexed papers are returned immediately without download attempts."""
+        """Pre-indexed papers are returned immediately, others attempted for download."""
         # Pre-index papers that match
         temp_index.add("10.1234/ml-paper", "Content with transformer")
         temp_index.add("10.1234/dl-paper", "More transformer content")
@@ -227,11 +227,10 @@ class TestFulltextFallbackMixin:
         downloader = MockDownloader(result=b"pdf content")
         provider = MockProvider(sample_papers, downloader=downloader)
 
-        download_called = False
+        download_calls: list[str] = []
 
-        async def mock_download(*args, **kwargs):
-            nonlocal download_called
-            download_called = True
+        async def mock_download(doi: str, *args, **kwargs):
+            download_calls.append(doi)
             return None
 
         with (
@@ -240,13 +239,16 @@ class TestFulltextFallbackMixin:
         ):
             query = title("learning") & fulltext("transformer")
             results = []
-            async for paper in provider._search_with_fulltext_filter(query, max_results=2):
+            async for paper in provider._search_with_fulltext_filter(query):
                 results.append(paper)
 
         # Pre-indexed papers should be returned
         assert len(results) == 2
-        # Download should not have been called since we found enough pre-indexed papers
-        assert not download_called
+        # Pre-indexed papers (ml-paper, dl-paper) should NOT be in download calls
+        assert "10.1234/ml-paper" not in download_calls
+        assert "10.1234/dl-paper" not in download_calls
+        # Other papers should have been attempted
+        assert "10.1234/stats-paper" in download_calls
 
     @pytest.mark.asyncio
     async def test_papers_without_doi_skipped_for_download(
@@ -275,7 +277,7 @@ class TestFulltextFallbackMixin:
         ):
             query = title("doi") & fulltext("content")
             results = []
-            async for paper in provider._search_with_fulltext_filter(query, max_results=10):
+            async for paper in provider._search_with_fulltext_filter(query):
                 results.append(paper)
 
         # Only the paper with DOI should have been downloaded

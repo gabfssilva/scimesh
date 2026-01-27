@@ -64,7 +64,6 @@ class Arxiv(Provider):
     async def search(
         self,
         query: Query,
-        max_results: int = 100,
     ) -> AsyncIterator[Paper]:
         """Search arXiv and yield papers."""
         if self._client is None:
@@ -79,7 +78,7 @@ class Arxiv(Provider):
         params = {
             "search_query": query_str,
             "start": 0,
-            "max_results": max_results,
+            "max_results": 100,
             "sortBy": "relevance",
             "sortOrder": "descending",
         }

@@ -439,15 +439,13 @@ class TestSearchResultDedupeWithMerge:
         assert deduped.papers[0] == p
 
     def test_dedupe_preserves_metadata(self):
-        """Dedupe should preserve errors and total_by_provider."""
+        """Dedupe should preserve total_by_provider."""
         papers = [
             Paper(title="A", authors=(), year=2020, source="arxiv"),
         ]
-        errors: dict[str, Exception] = {"scopus": ValueError("API error")}
         totals = {"arxiv": 10, "scopus": 0}
 
-        result = SearchResult(papers=papers, errors=errors, total_by_provider=totals)
+        result = SearchResult(papers=papers, total_by_provider=totals)
         deduped = result.dedupe()
 
-        assert deduped.errors == errors
         assert deduped.total_by_provider == totals

@@ -101,32 +101,25 @@ def _parse_host_concurrency(value: str | None) -> tuple[dict[str, int] | None, i
 async def _stream_search(
     query: str,
     provider_instances: list[Provider],
-    max_results: int,
     on_error: str,
     tree_exporter: TreeExporter,
-    total: int | None = None,
+    max_results: int | None = None,
+    dedupe: bool = True,
 ) -> int:
     """Stream search results, printing each paper as it arrives."""
     count = 0
-    seen: set[str] = set()  # For deduplication
 
     stream = do_search(
         query,
         providers=provider_instances,
-        max_results=max_results,
         on_error=on_error,  # type: ignore
+        dedupe=dedupe,
         stream=True,
     )
-    if total is not None:
-        stream = take(total, stream)
+    if max_results is not None:
+        stream = take(max_results, stream)
 
     async for paper in stream:
-        # Dedupe by DOI or title+year
-        key = paper.doi if paper.doi else f"{paper.title.lower()}:{paper.year}"
-        if key in seen:
-            continue
-        seen.add(key)
-
         if count > 0:
             print()  # Blank line between papers
         print(tree_exporter.format_paper(paper))
@@ -144,7 +137,7 @@ def search(
             name=["--provider", "-p"],
             help="Providers to search (arxiv, openalex, scopus, semantic_scholar, crossref)",
         ),
-    ] = ["arxiv", "openalex"],
+    ] = ["openalex"],
     output: Annotated[
         Path | None,
         cyclopts.Parameter(name=["--output", "-o"], help="Output file path"),
@@ -156,14 +149,8 @@ def search(
         ),
     ] = "tree",
     max_results: Annotated[
-        int,
-        cyclopts.Parameter(name=["--max", "-n"], help="Maximum results per provider"),
-    ] = 100,
-    total: Annotated[
         int | None,
-        cyclopts.Parameter(
-            name=["--total", "-t"], help="Maximum total results across all providers"
-        ),
+        cyclopts.Parameter(name=["--max", "-n"], help="Maximum total results"),
     ] = None,
     on_error: Annotated[
         str,
@@ -186,7 +173,7 @@ def search(
             name="--host-concurrency",
             help="Concurrency: '3' (all hosts) or 'arxiv.org=2,api.unpaywall.org=3' (per-host)",
         ),
-    ] = None,
+    ] = "5",
     log_level: Annotated[
         str | None,
         cyclopts.Parameter(
@@ -249,10 +236,10 @@ def search(
             _stream_search(
                 query,
                 provider_instances,
-                max_results,
                 on_error,
                 TreeExporter(),
-                total,
+                max_results,
+                dedupe=not no_dedupe,
             )
         )
         print(f"\nTotal: {count} papers", file=sys.stderr)
@@ -263,15 +250,14 @@ def search(
         do_search(
             query,
             providers=provider_instances,
-            max_results=max_results,
             on_error=on_error,  # type: ignore
             dedupe=not no_dedupe,
         )
     )
 
     # Apply total limit
-    if total is not None and len(result.papers) > total:
-        result.papers = result.papers[:total]
+    if max_results is not None and len(result.papers) > max_results:
+        result.papers = result.papers[:max_results]
 
     # Export results
     if output:
@@ -279,11 +265,6 @@ def search(
         print(f"Exported {len(result.papers)} papers to {output}")
     else:
         print(exporter.to_string(result))
-
-    # Report errors
-    if result.errors:
-        for provider_name, error in result.errors.items():
-            print(f"[WARN] {provider_name}: {error}", file=sys.stderr)
 
     # Summary
     print(f"\nTotal: {len(result.papers)} papers", file=sys.stderr)
@@ -524,7 +505,7 @@ def get(
     if merge and len(papers) > 1:
         papers = [merge_papers(papers)]
 
-    result = SearchResult(papers=papers, errors=errors)
+    result = SearchResult(papers=papers)
 
     # Export results
     if output:
@@ -537,7 +518,7 @@ def get(
     else:
         print(exporter.to_string(result))
 
-    # Report errors
+    # Report errors (local to this command, not in SearchResult)
     if errors:
         for pname, error in errors.items():
             print(f"[WARN] {pname}: {error}", file=sys.stderr)
@@ -693,7 +674,7 @@ def citations(
         print(f"No citations found for: {paper_id}", file=sys.stderr)
         sys.exit(0)
 
-    result = SearchResult(papers=papers, errors=errors)
+    result = SearchResult(papers=papers)
 
     # Dedupe if requested
     if not no_dedupe:

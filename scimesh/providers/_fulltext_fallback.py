@@ -36,7 +36,6 @@ class FulltextFallbackMixin:
     async def _search_with_fulltext_filter(
         self,
         query: Query,
-        max_results: int,
     ) -> AsyncIterator[Paper]:
         """Search with fulltext filtering using local FTS5 index.
 
@@ -51,7 +50,6 @@ class FulltextFallbackMixin:
 
         Args:
             query: The query containing a fulltext field.
-            max_results: Maximum number of results to return.
 
         Yields:
             Paper instances that match the fulltext term.
@@ -82,23 +80,17 @@ class FulltextFallbackMixin:
         else:
             logger.debug("No papers in local index match fulltext term: %s", term)
 
-        count = 0
-
         try:
             if downloader:
                 await downloader.__aenter__()
 
-            # Stream from API - fetch more than needed since some won't match
-            async for paper in self._search_api(base_query, max_results * 3):  # type: ignore[attr-defined]
-                if count >= max_results:
-                    return
-
+            # Stream from API
+            async for paper in self._search_api(base_query):  # type: ignore[attr-defined]
                 paper_id = paper.doi or paper.extras.get("paper_id")
 
                 # Pre-indexed paper that matches → yield immediately
                 if paper_id and paper_id in pre_indexed:
                     yield paper
-                    count += 1
                     continue
 
                 # No downloader or no DOI → skip
@@ -111,7 +103,6 @@ class FulltextFallbackMixin:
                 )
                 if text and self._text_matches_term(text, term):
                     yield paper
-                    count += 1
         finally:
             if downloader:
                 await downloader.__aexit__(None, None, None)
@@ -168,7 +159,6 @@ class FulltextFallbackMixin:
     async def _search_api(
         self,
         query: Query,
-        max_results: int,
     ) -> AsyncIterator[Paper]:
         """Execute the actual API search. Must be implemented by provider."""
         raise NotImplementedError("Provider must implement _search_api()")

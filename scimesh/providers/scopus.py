@@ -60,7 +60,6 @@ class Scopus(Provider):
     async def search(
         self,
         query: Query,
-        max_results: int = 100,
     ) -> AsyncIterator[Paper]:
         """Search Scopus and yield papers."""
         if self._client is None:
@@ -79,7 +78,7 @@ class Scopus(Provider):
 
         params = {
             "query": query_str,
-            "count": min(max_results, 25),  # Scopus max per request with COMPLETE view
+            "count": 25,  # Scopus max per request with COMPLETE view
             "start": 0,
             "view": "COMPLETE",  # Required to get abstract (dc:description)
         }

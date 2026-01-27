@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import warnings
+from collections import OrderedDict
 from collections.abc import AsyncIterator, Coroutine
 from typing import Any, Literal, overload
 
@@ -13,6 +14,8 @@ from scimesh.query.parser import parse
 logger = logging.getLogger(__name__)
 
 OnError = Literal["fail", "ignore", "warn"]
+
+DEFAULT_DEDUPE_WINDOW = 10_000
 
 
 async def take[T](n: int, aiter: AsyncIterator[T]) -> AsyncIterator[T]:
@@ -28,19 +31,21 @@ async def take[T](n: int, aiter: AsyncIterator[T]) -> AsyncIterator[T]:
 async def _search_stream(
     query: Query,
     providers: list[Provider],
-    max_results: int,
     on_error: OnError,
+    dedupe: bool = True,
+    dedupe_window: int = DEFAULT_DEDUPE_WINDOW,
 ) -> AsyncIterator[Paper]:
-    """Internal streaming implementation."""
-    logger.info("Starting streaming search with %s providers", len(providers))
+    """Stream papers from multiple providers with optional windowed deduplication."""
+    logger.info("Starting search with %s providers", len(providers))
     queue: asyncio.Queue[Paper | None | Exception] = asyncio.Queue()
     active_tasks = len(providers)
+    seen: OrderedDict[str, None] = OrderedDict()
 
     async def fetch_one(provider: Provider) -> None:
         nonlocal active_tasks
         try:
             async with provider:
-                async for paper in provider.search(query, max_results):
+                async for paper in provider.search(query):
                     await queue.put(paper)
         except Exception as e:
             if on_error == "fail":
@@ -63,56 +68,34 @@ async def _search_stream(
             break
         if isinstance(item, Exception):
             raise item
+
+        if dedupe:
+            key = item.doi or f"{item.title.lower()}:{item.year}"
+            if key in seen:
+                continue
+            seen[key] = None
+            if len(seen) > dedupe_window:
+                seen.popitem(last=False)  # remove oldest
+
         yield item
 
 
-async def _search_batch(
-    query: Query,
-    providers: list[Provider],
-    max_results: int,
-    on_error: OnError,
-    dedupe: bool,
-) -> SearchResult:
-    """Internal batch implementation."""
-    logger.info("Starting batch search with %s providers", len(providers))
-
-    async def fetch_one(
-        provider: Provider,
-    ) -> tuple[str, list[Paper], Exception | None]:
-        try:
-            async with provider:
-                papers = [p async for p in provider.search(query, max_results)]
-                return (provider.name, papers, None)
-        except Exception as e:
-            return (provider.name, [], e)
-
-    results = await asyncio.gather(*[fetch_one(p) for p in providers])
-
-    all_papers: list[Paper] = []
-    errors: dict[str, Exception] = {}
+async def _collect_results(stream: AsyncIterator[Paper]) -> SearchResult:
+    """Collect streamed papers into a SearchResult."""
+    papers: list[Paper] = []
     totals: dict[str, int] = {}
 
-    for name, papers, error in results:
-        if error:
-            if on_error == "fail":
-                raise error
-            elif on_error == "warn":
-                warnings.warn(f"Provider {name} failed: {error}", stacklevel=2)
-            errors[name] = error
-        else:
-            all_papers.extend(papers)
-            totals[name] = len(papers)
+    async for paper in stream:
+        papers.append(paper)
+        totals[paper.source] = totals.get(paper.source, 0) + 1
 
-    result = SearchResult(papers=all_papers, errors=errors, total_by_provider=totals)
-    logger.info("Search complete: %s papers from %s providers", len(all_papers), len(totals))
-    return result.dedupe() if dedupe else result
+    return SearchResult(papers=papers, total_by_provider=totals)
 
 
 @overload
 def search(
     query: Query | str,
     providers: list[Provider],
-    max_results: int = ...,
     on_error: OnError = ...,
     dedupe: bool = ...,
     stream: Literal[False] = ...,
@@ -123,7 +106,6 @@ def search(
 def search(
     query: Query | str,
     providers: list[Provider],
-    max_results: int = ...,
     on_error: OnError = ...,
     dedupe: bool = ...,
     *,
@@ -134,7 +116,6 @@ def search(
 def search(
     query: Query | str,
     providers: list[Provider],
-    max_results: int = 100,
     on_error: OnError = "warn",
     dedupe: bool = True,
     stream: bool = False,
@@ -145,9 +126,8 @@ def search(
     Args:
         query: Query AST or Scopus-style query string
         providers: List of providers to search
-        max_results: Maximum results per provider
         on_error: Error handling mode - "fail", "ignore", or "warn"
-        dedupe: Whether to deduplicate results by DOI (ignored when stream=True)
+        dedupe: Whether to deduplicate results (uses sliding window of 10k)
         stream: If True, yields papers as they arrive; if False, returns SearchResult
 
     Returns:
@@ -166,7 +146,7 @@ def search(
         logger.debug("Parsing query string: %s", query)
         query = parse(query)
 
+    paper_stream = _search_stream(query, providers, on_error, dedupe)
     if stream:
-        return _search_stream(query, providers, max_results, on_error)
-    else:
-        return _search_batch(query, providers, max_results, on_error, dedupe)
+        return paper_stream
+    return _collect_results(paper_stream)

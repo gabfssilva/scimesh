@@ -27,6 +27,5 @@ class JsonExporter(Exporter):
             "papers": [asdict(p) for p in result.papers],
             "total": len(result.papers),
             "by_provider": result.total_by_provider,
-            "errors": {k: str(v) for k, v in result.errors.items()},
         }
         return json.dumps(data, indent=self.indent, ensure_ascii=False, default=default_serializer)

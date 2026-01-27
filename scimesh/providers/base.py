@@ -29,7 +29,6 @@ class Provider(ABC):
     def search(
         self,
         query: Query,
-        max_results: int = 100,
     ) -> AsyncIterator[Paper]:
         """Execute search and yield papers."""
         ...
