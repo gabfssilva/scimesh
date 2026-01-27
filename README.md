@@ -21,14 +21,28 @@ Search arXiv, OpenAlex, and Scopus with a unified API. Export to BibTeX, RIS, CS
 
 ## Installation
 
+Run directly without installing:
+
 ```bash
-pip install scimesh
+uvx scimesh search "TITLE(transformer)"
 ```
 
-With uv:
+Install as a CLI tool (recommended):
+
+```bash
+uv tool install scimesh
+```
+
+Add to a project:
 
 ```bash
 uv add scimesh
+```
+
+With pip:
+
+```bash
+pip install scimesh
 ```
 
 ## Quick Start
