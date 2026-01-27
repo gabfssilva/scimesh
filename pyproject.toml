@@ -1,0 +1,80 @@
+[project]
+name = "scimesh"
+version = "0.1.0"
+description = "Systematic literature search library for scientific papers"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.13"
+authors = [{ name = "Gabriel Francisco", email = "gabfssilva@gmail.com" }]
+keywords = [
+    "scientific",
+    "literature",
+    "search",
+    "papers",
+    "arxiv",
+    "openalex",
+    "scopus",
+    "bibtex",
+    "research",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Text Processing :: Indexing",
+    "Intended Audience :: Science/Research",
+]
+dependencies = [
+    "cyclopts>=4.5.1",
+    "httpx>=0.28.1",
+    "pymupdf4llm>=0.2.9",
+    "tenacity>=9.1.2",
+]
+
+[project.scripts]
+scimesh = "scimesh.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/gabfssilva/scimesh"
+Repository = "https://github.com/gabfssilva/scimesh"
+Documentation = "https://github.com/gabfssilva/scimesh#readme"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.9.0",
+    "pyright>=1.1.0",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+ignore = [
+    "B006",   # mutable default - false positive with cyclopts
+    "SIM103", # return bool directly - less readable
+    "SIM105", # contextlib.suppress - less explicit
+    "SIM108", # ternary operator - less readable for complex cases
+]
+
+[tool.ruff.lint.per-file-ignores]
+"scimesh/query/parser.py" = ["E501"]  # regex pattern
+
+[tool.pyright]
+pythonVersion = "3.13"
+typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-v"
