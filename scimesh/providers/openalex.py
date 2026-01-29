@@ -134,10 +134,11 @@ class OpenAlex(Provider):
                 elif e:
                     filters.append(f"publication_year:<{e + 1}")
             case CitationRange(min=min_val, max=max_val):
+                # OpenAlex uses > and < only, not >= or <=
                 if min_val is not None:
-                    filters.append(f"cited_by_count:>={min_val}")
+                    filters.append(f"cited_by_count:>{min_val - 1}")
                 if max_val is not None:
-                    filters.append(f"cited_by_count:<={max_val}")
+                    filters.append(f"cited_by_count:<{max_val + 1}")
             case _:
                 pass  # title, abstract, keyword handled as search terms
 

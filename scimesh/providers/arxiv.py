@@ -1,9 +1,14 @@
 # scimesh/providers/arxiv.py
+from __future__ import annotations
+
 import asyncio
 import logging
+import re
 import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from datetime import datetime
+from typing import TYPE_CHECKING
 from urllib.parse import urlencode
 
 from scimesh.models import Author, Paper
@@ -19,6 +24,9 @@ from scimesh.query.combinators import (
     extract_citation_range,
     remove_citation_range,
 )
+
+if TYPE_CHECKING:
+    from scimesh.providers.openalex import OpenAlex
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +86,8 @@ class Arxiv(Provider):
             case _:
                 raise ValueError(f"Unsupported query node: {query}")
 
+    ENRICHMENT_BATCH_SIZE = 50
+
     async def search(
         self,
         query: Query,
@@ -86,7 +96,7 @@ class Arxiv(Provider):
         if self._client is None:
             raise RuntimeError("Provider not initialized. Use 'async with provider:'")
 
-        # Extract citation filter (arXiv has no citation data, so papers will be filtered out)
+        # Extract citation filter - arXiv has no citation data natively
         citation_filter = extract_citation_range(query)
         query_without_citations = remove_citation_range(query)
 
@@ -96,25 +106,45 @@ class Arxiv(Provider):
             )
             return
 
-        query_str = self._translate_query(query_without_citations)
+        if citation_filter is None:
+            # No citation filter: normal search
+            async for paper in self._search_raw(query_without_citations):
+                yield paper
+        else:
+            # With citation filter: enrich via OpenAlex
+            logger.info("Enriching arXiv results with citation data from OpenAlex")
+            from scimesh.providers.openalex import OpenAlex
+            from scimesh.search import chunked
+
+            async with OpenAlex() as openalex:
+                raw_stream = self._search_raw(query_without_citations)
+                async for batch in chunked(raw_stream, self.ENRICHMENT_BATCH_SIZE, timeout=5.0):
+                    citations = await self._fetch_citations_batch(openalex, batch)
+                    for paper in batch:
+                        enriched = self._with_citations(paper, citations)
+                        if self._passes_citation_filter(enriched, citation_filter):
+                            yield enriched
+
+    async def _search_raw(self, query: Query) -> AsyncIterator[Paper]:
+        """Raw arXiv search without citation enrichment."""
+        if self._client is None:
+            raise RuntimeError("Provider not initialized")
+
+        query_str = self._translate_query(query)
         logger.debug("Translated query: %s", query_str)
         if not query_str:
             logger.debug("Empty query, returning no results")
             return
 
-        # Filter by year if YearRange is in query
         year_filter = self._extract_year_filter(query)
-
         start = 0
         is_first_request = True
 
         while True:
-            # Respect arXiv hard limit
             if start >= self.MAX_RESULTS:
                 logger.debug("Reached arXiv hard limit of %d results", self.MAX_RESULTS)
                 break
 
-            # Rate limiting: wait before subsequent requests
             if not is_first_request:
                 await asyncio.sleep(self.RATE_LIMIT_DELAY)
             is_first_request = False
@@ -135,7 +165,6 @@ class Arxiv(Provider):
 
             root = ET.fromstring(response.text)
 
-            # Parse total results from OpenSearch metadata
             total_results_el = root.find(f"{OPENSEARCH_NS}totalResults")
             total_results = (
                 int(total_results_el.text)
@@ -150,24 +179,69 @@ class Arxiv(Provider):
             for entry in entries:
                 paper = self._parse_entry(entry)
                 if paper and self._matches_year_filter(paper, year_filter):
-                    # Apply client-side citation filter
-                    # Note: arXiv papers have citations_count=None, so they'll be filtered out
-                    if citation_filter:
-                        if paper.citations_count is None:
-                            continue
-                        cit_count = paper.citations_count
-                        if citation_filter.min is not None and cit_count < citation_filter.min:
-                            continue
-                        if citation_filter.max is not None and cit_count > citation_filter.max:
-                            continue
                     yield paper
 
-            # Move to next page
             start += self.PAGE_SIZE
 
-            # Stop conditions: no more results or received partial page
             if start >= total_results or entries_count < self.PAGE_SIZE:
                 break
+
+    async def _fetch_citations_batch(
+        self,
+        openalex: OpenAlex,
+        papers: list[Paper],
+    ) -> dict[str, int]:
+        """Fetch citation counts from OpenAlex for arXiv papers."""
+        arxiv_ids = []
+        for p in papers:
+            aid = p.extras.get("arxiv_id")
+            if aid:
+                # Remove version suffix (e.g., 1706.03762v5 -> 1706.03762)
+                arxiv_ids.append(aid.split("v")[0] if "v" in aid else aid)
+
+        if not arxiv_ids:
+            return {}
+
+        dois = "|".join(f"10.48550/arXiv.{aid}" for aid in arxiv_ids)
+        url = f"{openalex.BASE_URL}?filter=doi:{dois}&select=ids,cited_by_count&per_page=200"
+        logger.debug("Fetching citations from OpenAlex: %s", url)
+
+        if openalex._client is None:
+            return {}
+        response = await openalex._client.get(url)
+        response.raise_for_status()
+        data = response.json()
+
+        result: dict[str, int] = {}
+        for work in data.get("results", []):
+            # Use ids.doi which preserves the original arXiv DOI
+            ids = work.get("ids", {})
+            doi = ids.get("doi", "").replace("https://doi.org/", "")
+            # Extract arxiv_id from DOI: 10.48550/arXiv.1706.03762 -> 1706.03762
+            match = re.search(r"arxiv\.(\d+\.\d+)", doi, re.IGNORECASE)
+            if match:
+                arxiv_id = match.group(1)
+                if (count := work.get("cited_by_count")) is not None:
+                    result[arxiv_id] = count
+        return result
+
+    def _with_citations(self, paper: Paper, citations: dict[str, int]) -> Paper:
+        """Return paper with citations_count from lookup."""
+        arxiv_id = paper.extras.get("arxiv_id", "")
+        arxiv_id = arxiv_id.split("v")[0] if "v" in arxiv_id else arxiv_id
+        if arxiv_id in citations:
+            return replace(paper, citations_count=citations[arxiv_id])
+        return paper
+
+    def _passes_citation_filter(self, paper: Paper, f: CitationRange) -> bool:
+        """Check if paper passes citation filter."""
+        if paper.citations_count is None:
+            return False
+        if f.min is not None and paper.citations_count < f.min:
+            return False
+        if f.max is not None and paper.citations_count > f.max:
+            return False
+        return True
 
     def _extract_year_filter(self, query: Query) -> YearRange | None:
         """Extract YearRange from query if present."""

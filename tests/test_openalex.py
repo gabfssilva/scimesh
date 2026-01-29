@@ -273,25 +273,34 @@ async def test_search_single_page_when_results_fit():
 
 
 def test_openalex_citation_filter_min():
-    """Test that CitationRange with min translates to filter."""
+    """Test that CitationRange with min translates to filter.
+
+    OpenAlex uses > and < only (not >= or <=), so min=100 becomes >99.
+    """
     provider = OpenAlex()
     query = title("transformer") & citations(100)
     search_str, filter_str = provider._build_params(query)
-    assert "cited_by_count:>=100" in filter_str
+    assert "cited_by_count:>99" in filter_str
 
 
 def test_openalex_citation_filter_max():
-    """Test that CitationRange with max translates to filter."""
+    """Test that CitationRange with max translates to filter.
+
+    OpenAlex uses > and < only (not >= or <=), so max=500 becomes <501.
+    """
     provider = OpenAlex()
     query = title("transformer") & citations(max=500)
     search_str, filter_str = provider._build_params(query)
-    assert "cited_by_count:<=500" in filter_str
+    assert "cited_by_count:<501" in filter_str
 
 
 def test_openalex_citation_filter_range():
-    """Test that CitationRange with min and max translates to filters."""
+    """Test that CitationRange with min and max translates to filters.
+
+    OpenAlex uses > and < only, so 100-500 becomes >99 and <501.
+    """
     provider = OpenAlex()
     query = title("transformer") & citations(100, 500)
     search_str, filter_str = provider._build_params(query)
-    assert "cited_by_count:>=100" in filter_str
-    assert "cited_by_count:<=500" in filter_str
+    assert "cited_by_count:>99" in filter_str
+    assert "cited_by_count:<501" in filter_str

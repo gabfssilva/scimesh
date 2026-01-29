@@ -270,18 +270,25 @@ def search(
         return
 
     # Non-streaming path for other formats or file output
-    result = asyncio.run(
-        do_search(
+    async def _collect_with_limit() -> SearchResult:
+        stream = do_search(
             query,
             providers=provider_instances,
             on_error=on_error,  # type: ignore
             dedupe=not no_dedupe,
+            stream=True,
         )
-    )
+        if max_results is not None:
+            stream = take(max_results, stream)
 
-    # Apply total limit
-    if max_results is not None and len(result.papers) > max_results:
-        result.papers = result.papers[:max_results]
+        papers: list[Paper] = []
+        totals: dict[str, int] = {}
+        async for paper in stream:
+            papers.append(paper)
+            totals[paper.source] = totals.get(paper.source, 0) + 1
+        return SearchResult(papers=papers, total_by_provider=totals)
+
+    result = asyncio.run(_collect_with_limit())
 
     # Export results
     if output:

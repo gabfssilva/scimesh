@@ -28,6 +28,56 @@ async def take[T](n: int, aiter: AsyncIterator[T]) -> AsyncIterator[T]:
         count += 1
 
 
+async def chunked[T](
+    stream: AsyncIterator[T],
+    size: int,
+    timeout: float = 1.0,
+) -> AsyncIterator[list[T]]:
+    """Group items from async stream into chunks.
+
+    Args:
+        stream: Source async iterator
+        size: Max items per chunk
+        timeout: Max seconds to wait before yielding partial chunk
+
+    Yields:
+        Lists of up to `size` items
+    """
+    buffer: list[T] = []
+    aclose = getattr(stream, "aclose", None)
+
+    async def get_next() -> T:
+        """Wrapper to make __anext__ a proper coroutine for create_task."""
+        return await stream.__anext__()
+
+    try:
+        while True:
+            try:
+                item = await asyncio.wait_for(get_next(), timeout=timeout)
+                buffer.append(item)
+                if len(buffer) >= size:
+                    yield buffer
+                    buffer = []
+            except TimeoutError:
+                # Yield partial buffer on timeout
+                if buffer:
+                    yield buffer
+                    buffer = []
+            except StopAsyncIteration:
+                break
+
+        # Yield remaining buffer after normal completion
+        if buffer:
+            yield buffer
+    finally:
+        # Close the source stream
+        if aclose:
+            try:
+                await aclose()
+            except Exception:
+                pass
+
+
 async def _search_stream(
     query: Query,
     providers: list[Provider],
