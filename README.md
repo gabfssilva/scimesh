@@ -83,11 +83,11 @@ scimesh search "ALL(attention mechanism)"
 
 ```python
 import asyncio
-from scimesh import search, title, author, year
+from scimesh import search, title, author, year, citations
 from scimesh.providers import Arxiv, OpenAlex
 
 async def main():
-    query = title("transformer") & author("Vaswani") & year(2017, 2023)
+    query = title("transformer") & author("Vaswani") & year(2017, 2023) & citations(50)
 
     result = await search(
         query,
@@ -96,7 +96,7 @@ async def main():
     )
 
     for paper in result.papers:
-        print(f"{paper.title} ({paper.year})")
+        print(f"{paper.title} ({paper.year}) - {paper.citations_count} citations")
 
 asyncio.run(main())
 ```
@@ -143,6 +143,19 @@ scimesh search "deep learning AND PUBYEAR > 2020"  # Can combine with operators
 | `PUBYEAR >= 2020` | From year | Papers from 2020+ |
 | `PUBYEAR <= 2023` | Until year | Papers until 2023 |
 
+**Citation Operators:**
+
+| Operator | Description | Example |
+|----------|-------------|---------|
+| `CITEDBY >= 100` | Min citations | Papers with 100+ citations |
+| `CITEDBY <= 500` | Max citations | Papers with at most 500 citations |
+| `CITEDBY > 50` | More than | Papers with more than 50 citations |
+| `CITEDBY < 1000` | Less than | Papers with fewer than 1000 citations |
+| `CITEDBY = 0` | Exact count | Papers with no citations |
+| `CITATIONS >= 100` | Alias for CITEDBY | Same as `CITEDBY >= 100` |
+
+> **Note**: OpenAlex supports native citation filtering. Semantic Scholar supports native min filter only. Other providers filter client-side (slower for large result sets).
+
 **Logical Operators:**
 
 | Operator | Description | Example |
@@ -176,6 +189,12 @@ scimesh search "(TITLE(transformer) OR TITLE(attention)) AND AUTHOR(Google) AND 
 # Search across title, abstract, and keywords
 scimesh search "TITLE-ABS-KEY(reinforcement learning) AND PUBYEAR = 2023"
 
+# Filter by citation count (highly cited papers)
+scimesh search "TITLE(BERT) AND CITEDBY >= 100"
+
+# Citation range
+scimesh search "TITLE(transformer) AND CITATIONS >= 50 AND CITATIONS <= 500"
+
 # Full text search
 scimesh search "ALL(CRISPR gene editing)"
 ```
@@ -187,7 +206,7 @@ Build queries with Python operators for type safety and composability.
 **Field Builders:**
 
 ```python
-from scimesh import title, abstract, author, keyword, doi, fulltext, year
+from scimesh import title, abstract, author, keyword, doi, fulltext, year, citations
 
 # Single field queries
 q = title("transformer architecture")
@@ -207,6 +226,17 @@ q = year(2020, 2024)      # Range: 2020-2024 inclusive
 q = year(start=2020)      # From 2020 onwards
 q = year(end=2023)        # Until 2023
 q = year(2023, 2023)      # Exact year 2023
+```
+
+**Citation Filters:**
+
+```python
+from scimesh import citations
+
+q = citations(100)            # Min 100 citations (same as citations(min=100))
+q = citations(min=50)         # At least 50 citations
+q = citations(max=500)        # At most 500 citations
+q = citations(100, 1000)      # Between 100 and 1000 citations
 ```
 
 **Combining with Operators:**
@@ -230,6 +260,9 @@ q = (
     & year(2017, 2023)
     & ~keyword("computer vision")
 )
+
+# With citation filter
+q = title("BERT") & year(2019, 2024) & citations(100)
 ```
 
 **Full Example:**
@@ -445,13 +478,15 @@ providers = [
 
 ### Provider Capabilities
 
-| Provider | search | get | citations |
-|----------|--------|-----|-----------|
-| arXiv | Yes | Yes | No |
-| OpenAlex | Yes | Yes | Yes (in/out) |
-| Scopus | Yes | Yes | Yes (in only) |
-| Semantic Scholar | Yes | Yes | Yes (in/out) |
-| CrossRef | Yes | Yes | No |
+| Provider | search | get | citations | citation filter |
+|----------|--------|-----|-----------|-----------------|
+| arXiv | Yes | Yes | No | Client-side* |
+| OpenAlex | Yes | Yes | Yes (in/out) | Native |
+| Scopus | Yes | Yes | Yes (in only) | Client-side |
+| Semantic Scholar | Yes | Yes | Yes (in/out) | Native (min) / Client-side (max) |
+| CrossRef | Yes | Yes | No | Client-side |
+
+*arXiv does not provide citation counts, so citation filters return no results.
 
 ---
 
