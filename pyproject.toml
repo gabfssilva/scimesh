@@ -1,6 +1,6 @@
 [project]
 name = "scimesh"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Systematic literature search library for scientific papers"
 readme = "README.md"
 license = "MIT"
@@ -44,8 +44,14 @@ Repository = "https://github.com/gabfssilva/scimesh"
 Documentation = "https://github.com/gabfssilva/scimesh#readme"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "scimesh/_version.py"
 
 [dependency-groups]
 dev = [
