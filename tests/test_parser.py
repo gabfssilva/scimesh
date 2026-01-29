@@ -108,3 +108,52 @@ def test_parse_plain_text_with_year():
     assert isinstance(q, And)
     assert isinstance(q.left, Or)  # title OR abstract
     assert q.right == YearRange(start=2021, end=None)
+
+
+def test_parse_title_with_or_inside():
+    """TITLE with OR inside should expand to OR of Fields."""
+    q = parse('TITLE("deep learning" OR "neural network")')
+    assert isinstance(q, Or)
+    assert q.left == Field("title", "deep learning")
+    assert q.right == Field("title", "neural network")
+
+
+def test_parse_title_abs_with_or_inside():
+    """TITLE-ABS with OR inside should expand properly.
+
+    TITLE-ABS("a" OR "b") should become:
+    Or(
+        Or(Field(title, "a"), Field(abstract, "a")),
+        Or(Field(title, "b"), Field(abstract, "b"))
+    )
+    """
+    q = parse('TITLE-ABS("deep learning" OR imputation)')
+    assert isinstance(q, Or)
+    # Left side: TITLE-ABS("deep learning")
+    assert isinstance(q.left, Or)
+    assert q.left.left == Field("title", "deep learning")
+    assert q.left.right == Field("abstract", "deep learning")
+    # Right side: TITLE-ABS(imputation)
+    assert isinstance(q.right, Or)
+    assert q.right.left == Field("title", "imputation")
+    assert q.right.right == Field("abstract", "imputation")
+
+
+def test_parse_title_abs_with_multiple_or_inside():
+    """TITLE-ABS with multiple OR terms."""
+    q = parse("TITLE-ABS(a OR b OR c)")
+    # Should be: Or(Or(TITLE-ABS(a), TITLE-ABS(b)), TITLE-ABS(c))
+    assert isinstance(q, Or)
+    # The structure is left-associative: ((a OR b) OR c)
+
+
+def test_parse_complex_query_with_or_inside_title_abs():
+    """Complex query with OR inside TITLE-ABS and AND between clauses."""
+    query = (
+        'TITLE-ABS("deep learning" OR "neural network") '
+        "AND TITLE-ABS(imputation) AND PUBYEAR > 2019"
+    )
+    q = parse(query)
+    assert isinstance(q, And)
+    # Should have year range on the right
+    assert q.right == YearRange(start=2020, end=None)

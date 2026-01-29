@@ -29,34 +29,98 @@ class OpenAlex(Provider):
         """Convert Query AST to OpenAlex search and filter params.
 
         Returns (search_terms, filter_string).
-        """
-        search_terms: list[str] = []
-        filters: list[str] = []
-        self._collect_params(query, search_terms, filters)
-        return (" ".join(search_terms), ",".join(filters))
 
-    def _collect_params(self, query: Query, search_terms: list[str], filters: list[str]) -> None:
-        """Recursively collect search terms and filters from query AST."""
+        The search string uses OpenAlex syntax:
+        - OR groups: (term1 OR term2)
+        - AND between groups: space-separated
+        """
+        or_groups, filters = self._extract_groups_and_filters(query)
+        search_str = self._format_search_groups(or_groups)
+        return (search_str, ",".join(filters))
+
+    def _extract_groups_and_filters(self, query: Query) -> tuple[list[list[str]], list[str]]:
+        """Extract OR groups and filters from query.
+
+        Returns (or_groups, filters) where or_groups is a list of lists of terms.
+        """
+        filters: list[str] = []
+
+        # Split query by top-level AND to identify OR groups
+        and_groups = self._split_by_and(query)
+
+        or_groups: list[list[str]] = []
+        for group in and_groups:
+            # Collect search terms from this OR group
+            terms = self._collect_or_terms(group)
+            if terms:
+                or_groups.append(terms)
+
+            # Collect filters from this group
+            self._collect_filters(group, filters)
+
+        return (or_groups, filters)
+
+    def _format_search_groups(self, or_groups: list[list[str]]) -> str:
+        """Format OR groups into OpenAlex search syntax."""
+        search_parts: list[str] = []
+        for terms in or_groups:
+            if len(terms) == 1:
+                search_parts.append(terms[0])
+            else:
+                search_parts.append(f"({' OR '.join(terms)})")
+        return " ".join(search_parts)
+
+    def _count_total_ors(self, or_groups: list[list[str]]) -> int:
+        """Count total OR operators needed for the query."""
+        return sum(len(terms) - 1 for terms in or_groups if len(terms) > 1)
+
+    def _split_by_and(self, query: Query) -> list[Query]:
+        """Split query by top-level AND nodes into groups."""
+        match query:
+            case And(left=l, right=r):
+                return self._split_by_and(l) + self._split_by_and(r)
+            case _:
+                return [query]
+
+    def _collect_or_terms(self, query: Query) -> list[str]:
+        """Collect unique search terms from an OR group, preserving order."""
+        seen: set[str] = set()
+        terms: list[str] = []
+        self._collect_terms_recursive(query, terms, seen)
+        return terms
+
+    def _collect_terms_recursive(self, query: Query, terms: list[str], seen: set[str]) -> None:
+        """Recursively collect search terms, deduplicating."""
         match query:
             case Field(field="title" | "abstract" | "keyword", value=v):
-                search_terms.append(v)
+                if v not in seen:
+                    seen.add(v)
+                    terms.append(v)
+            case Or(left=l, right=r):
+                self._collect_terms_recursive(l, terms, seen)
+                self._collect_terms_recursive(r, terms, seen)
+            case And(left=l, right=r):
+                # AND inside an OR group - collect from both sides
+                self._collect_terms_recursive(l, terms, seen)
+                self._collect_terms_recursive(r, terms, seen)
+            case _:
+                pass  # Filters, year ranges, etc. handled separately
+
+    def _collect_filters(self, query: Query, filters: list[str]) -> None:
+        """Collect filter parameters from query."""
+        match query:
             case Field(field="fulltext", value=v):
-                # OpenAlex has native fulltext search via fulltext.search filter
                 filters.append(f"fulltext.search:{v}")
             case Field(field="author", value=v):
                 filters.append(f"raw_author_name.search:{v}")
             case Field(field="doi", value=v):
                 filters.append(f"doi:{v}")
-            case And(left=l, right=r):
-                self._collect_params(l, search_terms, filters)
-                self._collect_params(r, search_terms, filters)
-            case Or(left=l, right=r):
-                self._collect_params(l, search_terms, filters)
-                self._collect_params(r, search_terms, filters)
+            case And(left=l, right=r) | Or(left=l, right=r):
+                self._collect_filters(l, filters)
+                self._collect_filters(r, filters)
             case Not(operand=o):
                 neg_filters: list[str] = []
-                neg_search: list[str] = []
-                self._collect_params(o, neg_search, neg_filters)
+                self._collect_filters(o, neg_filters)
                 for f in neg_filters:
                     filters.append(f"!{f}")
             case YearRange(start=s, end=e):
@@ -69,6 +133,10 @@ class OpenAlex(Provider):
                     filters.append(f"publication_year:>{s - 1}")
                 elif e:
                     filters.append(f"publication_year:<{e + 1}")
+            case _:
+                pass  # title, abstract, keyword handled as search terms
+
+    MAX_OR_TERMS = 10  # OpenAlex limit
 
     async def search(
         self,
@@ -78,34 +146,117 @@ class OpenAlex(Provider):
         if self._client is None:
             raise RuntimeError("Provider not initialized. Use 'async with provider:'")
 
-        search_terms, filter_str = self._build_params(query)
-        logger.debug("Search terms: %s", search_terms)
+        or_groups, filters = self._extract_groups_and_filters(query)
+        filter_str = ",".join(filters)
+        total_ors = self._count_total_ors(or_groups)
+
+        logger.debug("OR groups: %s", or_groups)
+        logger.debug("Total ORs: %d (max: %d)", total_ors, self.MAX_OR_TERMS)
         logger.debug("Filters: %s", filter_str)
 
-        params: dict[str, str | int] = {
-            "per_page": 200,  # OpenAlex max is 200
-        }
-
-        if self._mailto:
-            params["mailto"] = self._mailto
-
-        if search_terms:
-            params["search"] = search_terms
-        if filter_str:
-            params["filter"] = filter_str
-
-        url = f"{self.BASE_URL}?{urlencode(params)}"
-        logger.debug("Requesting: %s", url)
-        response = await self._client.get(url)
-        response.raise_for_status()
-        logger.debug("Response status: %s", response.status_code)
-
-        data = response.json()
-        logger.debug("Results count: %s", len(data.get("results", [])))
-        for work in data.get("results", []):
-            paper = self._parse_work(work)
-            if paper:
+        if total_ors <= self.MAX_OR_TERMS:
+            # Single query - under the limit
+            search_str = self._format_search_groups(or_groups)
+            async for paper in self._execute_search(search_str, filter_str):
                 yield paper
+        else:
+            # Need to split the query into multiple requests
+            logger.debug("Splitting query due to OR limit")
+            seen_ids: set[str] = set()
+            async for paper in self._search_split(or_groups, filter_str, seen_ids):
+                yield paper
+
+    async def _execute_search(self, search_terms: str, filter_str: str) -> AsyncIterator[Paper]:
+        """Execute search with cursor pagination."""
+        if self._client is None:
+            raise RuntimeError("Provider not initialized")
+
+        cursor: str | None = "*"  # Initial cursor to start pagination
+
+        while cursor is not None:
+            params: dict[str, str | int] = {
+                "per_page": 200,  # OpenAlex max is 200
+                "cursor": cursor,
+            }
+
+            if self._mailto:
+                params["mailto"] = self._mailto
+
+            if search_terms:
+                params["search"] = search_terms
+            if filter_str:
+                params["filter"] = filter_str
+
+            url = f"{self.BASE_URL}?{urlencode(params)}"
+            logger.debug("Requesting: %s", url)
+            response = await self._client.get(url)
+            response.raise_for_status()
+            logger.debug("Response status: %s", response.status_code)
+
+            data = response.json()
+            results = data.get("results", [])
+            meta = data.get("meta", {})
+
+            logger.debug(
+                "Results count: %s, total: %s, next_cursor: %s",
+                len(results),
+                meta.get("count"),
+                meta.get("next_cursor"),
+            )
+
+            for work in results:
+                paper = self._parse_work(work)
+                if paper:
+                    yield paper
+
+            # Get next cursor for pagination
+            cursor = meta.get("next_cursor")
+
+    async def _search_split(
+        self,
+        or_groups: list[list[str]],
+        filter_str: str,
+        seen_ids: set[str],
+    ) -> AsyncIterator[Paper]:
+        """Split query into multiple requests when OR limit exceeded.
+
+        Strategy: Split the largest OR group into chunks that fit within limit.
+        """
+        # Find the largest group (most likely to need splitting)
+        if not or_groups:
+            return
+
+        largest_idx = max(range(len(or_groups)), key=lambda i: len(or_groups[i]))
+        largest_group = or_groups[largest_idx]
+        other_groups = [g for i, g in enumerate(or_groups) if i != largest_idx]
+
+        # Calculate how many ORs we have from other groups
+        other_ors = self._count_total_ors(other_groups)
+        # How many ORs can we use for the largest group per request?
+        available_ors = self.MAX_OR_TERMS - other_ors
+        # Each OR connects 2 terms, so available_ors ORs = available_ors + 1 terms
+        chunk_size = max(1, available_ors + 1)
+
+        logger.debug(
+            "Splitting group of %d terms into chunks of %d",
+            len(largest_group),
+            chunk_size,
+        )
+
+        # Split largest group into chunks
+        for i in range(0, len(largest_group), chunk_size):
+            chunk = largest_group[i : i + chunk_size]
+            chunk_groups = other_groups + [chunk]
+            search_str = self._format_search_groups(chunk_groups)
+
+            logger.debug("Chunk search: %s", search_str)
+
+            async for paper in self._execute_search(search_str, filter_str):
+                # Deduplicate across chunks
+                paper_id = paper.extras.get("openalex_id", paper.doi or paper.title)
+                if paper_id and paper_id not in seen_ids:
+                    seen_ids.add(paper_id)
+                    yield paper
 
     def _parse_work(self, work: dict) -> Paper | None:
         """Parse an OpenAlex work into a Paper."""

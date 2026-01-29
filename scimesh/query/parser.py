@@ -114,32 +114,73 @@ class Parser:
         field_name = self.consume()
         self.expect("(")
 
-        # Collect value tokens until closing paren
-        value_parts: list[str] = []
-        depth = 1
-        while depth > 0:
-            t = self.consume()
-            if t == "(":
-                depth += 1
-                value_parts.append(t)
-            elif t == ")":
-                depth -= 1
-                if depth > 0:
-                    value_parts.append(t)
-            else:
-                value_parts.append(t)
+        # Parse content inside field specifier, which may contain OR/AND
+        content = self._parse_field_content()
+        self.expect(")")
 
-        value = " ".join(value_parts)
         fields = FIELD_MAP[field_name]
+        return self._apply_fields_to_content(content, fields)
 
-        if len(fields) == 1:
-            return Field(fields[0], value)
-        else:
-            # Multiple fields: OR them together
-            result = Field(fields[0], value)
-            for f in fields[1:]:
-                result = Or(result, Field(f, value))
-            return result
+    def _parse_field_content(self) -> Query:
+        """Parse content inside a field specifier (may contain OR)."""
+        return self._parse_field_content_or()
+
+    def _parse_field_content_or(self) -> Query:
+        """Parse OR expressions inside field content."""
+        left = self._parse_field_content_primary()
+        while self.peek() == "OR":
+            self.consume()
+            right = self._parse_field_content_primary()
+            left = Or(left, right)
+        return left
+
+    def _parse_field_content_primary(self) -> Query:
+        """Parse a primary term or grouped expression inside field content."""
+        token = self.peek()
+
+        if token == "(":
+            # Nested parentheses inside field content
+            self.consume()
+            expr = self._parse_field_content_or()
+            self.expect(")")
+            return expr
+
+        # Collect consecutive terms (not OR, not closing paren)
+        # This handles multi-word terms like: TITLE(machine learning)
+        terms: list[str] = []
+        while self.peek() not in (None, "OR", ")"):
+            terms.append(self.consume())
+
+        if not terms:
+            raise SyntaxError(f"Expected term in field content, got: {token}")
+
+        # Use a placeholder field that will be replaced
+        return Field("_raw", " ".join(terms))
+
+    def _apply_fields_to_content(self, content: Query, fields: list[str]) -> Query:
+        """Apply field names to a content query with _raw placeholders."""
+        match content:
+            case Field(field="_raw", value=v):
+                if len(fields) == 1:
+                    return Field(fields[0], v)
+                else:
+                    # Multiple fields: OR them together
+                    result = Field(fields[0], v)
+                    for f in fields[1:]:
+                        result = Or(result, Field(f, v))
+                    return result
+            case Or(left=l, right=r):
+                return Or(
+                    self._apply_fields_to_content(l, fields),
+                    self._apply_fields_to_content(r, fields),
+                )
+            case And(left=l, right=r):
+                return And(
+                    self._apply_fields_to_content(l, fields),
+                    self._apply_fields_to_content(r, fields),
+                )
+            case _:
+                return content
 
     def parse_pubyear(self) -> Query:
         self.consume()  # PUBYEAR
