@@ -1,5 +1,5 @@
 # tests/test_parser.py
-from scimesh.query.combinators import And, Field, Not, Or, YearRange
+from scimesh.query.combinators import And, CitationRange, Field, Not, Or, YearRange
 from scimesh.query.parser import parse
 
 
@@ -157,3 +157,49 @@ def test_parse_complex_query_with_or_inside_title_abs():
     assert isinstance(q, And)
     # Should have year range on the right
     assert q.right == YearRange(start=2020, end=None)
+
+
+# Tests for CITEDBY/CITATIONS
+
+
+def test_parse_citedby_equals():
+    q = parse("CITEDBY = 100")
+    assert q == CitationRange(min=100, max=100)
+
+
+def test_parse_citedby_greater():
+    q = parse("CITEDBY > 50")
+    assert q == CitationRange(min=51, max=None)
+
+
+def test_parse_citedby_greater_equal():
+    q = parse("CITEDBY >= 100")
+    assert q == CitationRange(min=100, max=None)
+
+
+def test_parse_citedby_less():
+    q = parse("CITEDBY < 100")
+    assert q == CitationRange(min=None, max=99)
+
+
+def test_parse_citedby_less_equal():
+    q = parse("CITEDBY <= 100")
+    assert q == CitationRange(min=None, max=100)
+
+
+def test_parse_citations_alias():
+    """CITATIONS should work as alias for CITEDBY."""
+    q = parse("CITATIONS >= 50")
+    assert q == CitationRange(min=50, max=None)
+
+
+def test_parse_citedby_with_title():
+    q = parse("TITLE(deep learning) AND CITEDBY >= 100")
+    assert isinstance(q, And)
+    assert q.left == Field("title", "deep learning")
+    assert q.right == CitationRange(min=100, max=None)
+
+
+def test_parse_citedby_with_pubyear():
+    q = parse("TITLE(ml) AND PUBYEAR > 2020 AND CITEDBY >= 50")
+    assert isinstance(q, And)

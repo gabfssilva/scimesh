@@ -7,7 +7,17 @@ from urllib.parse import urlencode
 
 from scimesh.models import Author, Paper
 from scimesh.providers.base import Provider
-from scimesh.query.combinators import And, Field, Not, Or, Query, YearRange
+from scimesh.query.combinators import (
+    And,
+    CitationRange,
+    Field,
+    Not,
+    Or,
+    Query,
+    YearRange,
+    extract_citation_range,
+    remove_citation_range,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +68,8 @@ class Arxiv(Provider):
                 return f"ANDNOT {self._translate_query(o)}"
             case YearRange():
                 return ""  # arXiv doesn't support year filter in query
+            case CitationRange():
+                return ""  # arXiv doesn't have citation data
             case _:
                 raise ValueError(f"Unsupported query node: {query}")
 
@@ -69,7 +81,17 @@ class Arxiv(Provider):
         if self._client is None:
             raise RuntimeError("Provider not initialized. Use 'async with provider:'")
 
-        query_str = self._translate_query(query)
+        # Extract citation filter (arXiv has no citation data, so papers will be filtered out)
+        citation_filter = extract_citation_range(query)
+        query_without_citations = remove_citation_range(query)
+
+        if query_without_citations is None:
+            logger.warning(
+                "arXiv does not provide citation data; citation-only queries return no results"
+            )
+            return
+
+        query_str = self._translate_query(query_without_citations)
         logger.debug("Translated query: %s", query_str)
         if not query_str:
             logger.debug("Empty query, returning no results")
@@ -96,6 +118,16 @@ class Arxiv(Provider):
         for entry in root.findall(f"{ATOM_NS}entry"):
             paper = self._parse_entry(entry)
             if paper and self._matches_year_filter(paper, year_filter):
+                # Apply client-side citation filter
+                # Note: arXiv papers have citations_count=None, so they'll be filtered out
+                if citation_filter:
+                    if paper.citations_count is None:
+                        continue
+                    cit_count = paper.citations_count
+                    if citation_filter.min is not None and cit_count < citation_filter.min:
+                        continue
+                    if citation_filter.max is not None and cit_count > citation_filter.max:
+                        continue
                 yield paper
 
     def _extract_year_filter(self, query: Query) -> YearRange | None:

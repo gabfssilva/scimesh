@@ -8,7 +8,17 @@ from urllib.parse import urlencode
 
 from scimesh.models import Author, Paper
 from scimesh.providers.base import Provider
-from scimesh.query.combinators import And, Field, Not, Or, Query, YearRange
+from scimesh.query.combinators import (
+    And,
+    CitationRange,
+    Field,
+    Not,
+    Or,
+    Query,
+    YearRange,
+    extract_citation_range,
+    remove_citation_range,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +64,8 @@ class Scopus(Provider):
                 elif e:
                     return f"PUBYEAR < {e + 1}"
                 return ""
+            case CitationRange():
+                return ""  # Handled client-side
             case _:
                 raise ValueError(f"Unsupported query node: {query}")
 
@@ -68,7 +80,14 @@ class Scopus(Provider):
         if not self._api_key:
             raise ValueError("Scopus requires an API key. Set SCOPUS_API_KEY or pass api_key=")
 
-        query_str = self._translate_query(query)
+        # Extract citation filter for client-side filtering
+        citation_filter = extract_citation_range(query)
+        query_without_citations = remove_citation_range(query)
+
+        if query_without_citations is None:
+            return
+
+        query_str = self._translate_query(query_without_citations)
         logger.debug("Translated query: %s", query_str)
 
         headers = {
@@ -96,6 +115,15 @@ class Scopus(Provider):
         for entry in results:
             paper = self._parse_entry(entry)
             if paper:
+                # Apply client-side citation filter
+                if citation_filter:
+                    if paper.citations_count is None:
+                        continue
+                    cit_count = paper.citations_count
+                    if citation_filter.min is not None and cit_count < citation_filter.min:
+                        continue
+                    if citation_filter.max is not None and cit_count > citation_filter.max:
+                        continue
                 yield paper
 
     def _parse_entry(self, entry: dict) -> Paper | None:

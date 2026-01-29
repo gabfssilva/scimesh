@@ -11,7 +11,18 @@ from urllib.parse import urlencode
 from scimesh.models import Author, Paper
 from scimesh.providers._fulltext_fallback import FulltextFallbackMixin
 from scimesh.providers.base import Provider
-from scimesh.query.combinators import And, Field, Not, Or, Query, YearRange, has_fulltext
+from scimesh.query.combinators import (
+    And,
+    CitationRange,
+    Field,
+    Not,
+    Or,
+    Query,
+    YearRange,
+    extract_citation_range,
+    has_fulltext,
+    remove_citation_range,
+)
 
 if TYPE_CHECKING:
     from scimesh.download.base import Downloader
@@ -80,6 +91,8 @@ class CrossRef(FulltextFallbackMixin, Provider):
                     filters.append(f"filter=from-pub-date:{s}")
                 elif e:
                     filters.append(f"filter=until-pub-date:{e}")
+            case CitationRange():
+                pass  # Handled client-side
 
     async def search(
         self,
@@ -106,7 +119,14 @@ class CrossRef(FulltextFallbackMixin, Provider):
         if self._client is None:
             raise RuntimeError("Provider not initialized. Use 'async with provider:'")
 
-        query_terms, filters = self._build_params(query)
+        # Extract citation filter for client-side filtering
+        citation_filter = extract_citation_range(query)
+        query_without_citations = remove_citation_range(query)
+
+        if query_without_citations is None:
+            return
+
+        query_terms, filters = self._build_params(query_without_citations)
         logger.debug("Query terms: %s", query_terms)
         logger.debug("Filters: %s", filters)
 
@@ -159,6 +179,15 @@ class CrossRef(FulltextFallbackMixin, Provider):
         for item in items:
             paper = self._parse_item(item)
             if paper:
+                # Apply client-side citation filter
+                if citation_filter:
+                    if paper.citations_count is None:
+                        continue
+                    cit_count = paper.citations_count
+                    if citation_filter.min is not None and cit_count < citation_filter.min:
+                        continue
+                    if citation_filter.max is not None and cit_count > citation_filter.max:
+                        continue
                 yield paper
 
     def _parse_item(self, item: dict) -> Paper | None:

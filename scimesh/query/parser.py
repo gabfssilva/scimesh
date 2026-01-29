@@ -14,7 +14,7 @@ Supports:
 
 import re
 
-from .combinators import And, Field, Not, Or, Query, YearRange
+from .combinators import And, CitationRange, Field, Not, Or, Query, YearRange
 
 # Maps Scopus field names to internal field(s)
 FIELD_MAP: dict[str, list[str]] = {
@@ -32,7 +32,7 @@ FIELD_MAP: dict[str, list[str]] = {
 
 # Token patterns
 TOKEN_PATTERN = re.compile(
-    r"(TITLE-ABS-KEY|TITLE-ABS|TITLE|ABS|KEY|AUTHOR|AUTH|DOI|ALL|FULL|PUBYEAR|AND NOT|AND|OR|>=|<=|[()><=]|\d+|\"[^\"]*\"|[^\s()><=]+)"
+    r"(TITLE-ABS-KEY|TITLE-ABS|TITLE|ABS|KEY|AUTHOR|AUTH|DOI|ALL|FULL|PUBYEAR|CITEDBY|CITATIONS|AND NOT|AND|OR|>=|<=|[()><=]|\d+|\"[^\"]*\"|[^\s()><=]+)"
 )
 
 
@@ -103,6 +103,9 @@ class Parser:
 
         if token == "PUBYEAR":
             return self.parse_pubyear()
+
+        if token in ("CITEDBY", "CITATIONS"):
+            return self.parse_citedby()
 
         if token in FIELD_MAP:
             return self.parse_field()
@@ -199,6 +202,24 @@ class Parser:
             return YearRange(start=None, end=year_val)
         else:
             raise SyntaxError(f"Unknown PUBYEAR operator: {op}")
+
+    def parse_citedby(self) -> Query:
+        self.consume()  # CITEDBY or CITATIONS
+        op = self.consume()  # =, >, <, >=, <=
+        count_val = int(self.consume())
+
+        if op == "=":
+            return CitationRange(min=count_val, max=count_val)
+        elif op == ">":
+            return CitationRange(min=count_val + 1, max=None)
+        elif op == "<":
+            return CitationRange(min=None, max=count_val - 1)
+        elif op == ">=":
+            return CitationRange(min=count_val, max=None)
+        elif op == "<=":
+            return CitationRange(min=None, max=count_val)
+        else:
+            raise SyntaxError(f"Unknown CITEDBY operator: {op}")
 
     def parse_plain_text(self) -> Query:
         """Parse plain text without field specifier as title + abstract search."""

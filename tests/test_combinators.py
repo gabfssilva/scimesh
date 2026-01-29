@@ -1,15 +1,19 @@
 # tests/test_combinators.py
 from scimesh.query.combinators import (
     And,
+    CitationRange,
     Field,
     Not,
     Or,
     YearRange,
     author,
+    citations,
+    extract_citation_range,
     extract_fulltext_term,
     fulltext,
     has_fulltext,
     keyword,
+    remove_citation_range,
     remove_fulltext,
     title,
     year,
@@ -162,3 +166,77 @@ def test_remove_fulltext_preserves_year():
     q = fulltext("test") & year(2020, 2023)
     result = remove_fulltext(q)
     assert result == year(2020, 2023)
+
+
+# Tests for CitationRange and citations()
+
+
+def test_citations_min_only():
+    q = citations(100)
+    assert isinstance(q, CitationRange)
+    assert q.min == 100
+    assert q.max is None
+
+
+def test_citations_min_and_max():
+    q = citations(100, 500)
+    assert isinstance(q, CitationRange)
+    assert q.min == 100
+    assert q.max == 500
+
+
+def test_citations_max_only():
+    q = citations(max=200)
+    assert isinstance(q, CitationRange)
+    assert q.min is None
+    assert q.max == 200
+
+
+def test_citations_keyword_min():
+    q = citations(min=50)
+    assert isinstance(q, CitationRange)
+    assert q.min == 50
+    assert q.max is None
+
+
+# Tests for extract_citation_range
+
+
+def test_extract_citation_range_simple():
+    q = citations(100)
+    assert extract_citation_range(q) == CitationRange(min=100)
+
+
+def test_extract_citation_range_in_and():
+    q = title("transformer") & citations(50)
+    result = extract_citation_range(q)
+    assert result == CitationRange(min=50)
+
+
+def test_extract_citation_range_none():
+    q = title("bert") & author("google")
+    assert extract_citation_range(q) is None
+
+
+# Tests for remove_citation_range
+
+
+def test_remove_citation_range_simple():
+    assert remove_citation_range(citations(100)) is None
+
+
+def test_remove_citation_range_preserves_other():
+    q = title("transformer")
+    assert remove_citation_range(q) == q
+
+
+def test_remove_citation_range_from_and():
+    q = title("transformer") & citations(100)
+    result = remove_citation_range(q)
+    assert result == title("transformer")
+
+
+def test_remove_citation_range_nested():
+    q = (title("bert") & citations(50)) & author("google")
+    result = remove_citation_range(q)
+    assert result == And(title("bert"), author("google"))

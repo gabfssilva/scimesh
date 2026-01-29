@@ -7,7 +7,7 @@ from urllib.parse import urlencode
 
 from scimesh.models import Author, Paper
 from scimesh.providers.base import Provider
-from scimesh.query.combinators import And, Field, Not, Or, Query, YearRange
+from scimesh.query.combinators import And, CitationRange, Field, Not, Or, Query, YearRange
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +133,11 @@ class OpenAlex(Provider):
                     filters.append(f"publication_year:>{s - 1}")
                 elif e:
                     filters.append(f"publication_year:<{e + 1}")
+            case CitationRange(min=min_val, max=max_val):
+                if min_val is not None:
+                    filters.append(f"cited_by_count:>={min_val}")
+                if max_val is not None:
+                    filters.append(f"cited_by_count:<={max_val}")
             case _:
                 pass  # title, abstract, keyword handled as search terms
 

@@ -14,7 +14,18 @@ import httpx
 from scimesh.models import Author, Paper
 from scimesh.providers._fulltext_fallback import FulltextFallbackMixin
 from scimesh.providers.base import Provider
-from scimesh.query.combinators import And, Field, Not, Or, Query, YearRange, has_fulltext
+from scimesh.query.combinators import (
+    And,
+    CitationRange,
+    Field,
+    Not,
+    Or,
+    Query,
+    YearRange,
+    extract_citation_range,
+    has_fulltext,
+    remove_citation_range,
+)
 
 if TYPE_CHECKING:
     from scimesh.download.base import Downloader
@@ -116,6 +127,8 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
             case YearRange(start=s, end=e):
                 year_start = s
                 year_end = e
+            case CitationRange():
+                pass  # Handled separately in _search_api
 
         return year_start, year_end
 
@@ -144,7 +157,15 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
         if self._client is None:
             raise RuntimeError("Provider not initialized. Use 'async with provider:'")
 
-        query_str, year_start, year_end = self._translate_query(query)
+        # Extract citation filter for native support + client-side max
+        citation_filter = extract_citation_range(query)
+        query_without_citations = remove_citation_range(query)
+
+        if query_without_citations is None:
+            logger.debug("Citation-only query, returning no results")
+            return
+
+        query_str, year_start, year_end = self._translate_query(query_without_citations)
         logger.debug("Translated query: %s", query_str)
         logger.debug("Year range: %s - %s", year_start, year_end)
 
@@ -157,6 +178,10 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
             "limit": 100,  # Semantic Scholar max is 100
             "fields": API_FIELDS,
         }
+
+        # Add citation filter (Semantic Scholar supports minCitationCount natively)
+        if citation_filter and citation_filter.min is not None:
+            params["minCitationCount"] = citation_filter.min
 
         # Add year filter if specified
         if year_start:
@@ -214,6 +239,15 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
         for paper_data in results:
             paper = self._parse_paper(paper_data)
             if paper:
+                # Apply client-side filter for max citations (API doesn't support it)
+                if (
+                    citation_filter
+                    and citation_filter.max is not None
+                    and (
+                        paper.citations_count is None or paper.citations_count > citation_filter.max
+                    )
+                ):
+                    continue
                 yield paper
 
     def _parse_paper(self, paper_data: dict) -> Paper | None:
