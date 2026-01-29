@@ -31,7 +31,7 @@ class FulltextFallbackMixin:
             text extracted, and indexed. Default: None (no auto-download).
     """
 
-    _downloader: "Downloader | None" = None
+    _downloader: Downloader | None = None
 
     async def _search_with_fulltext_filter(
         self,
@@ -110,7 +110,7 @@ class FulltextFallbackMixin:
     async def _try_download_single(
         self,
         doi: str,
-        downloader: "Downloader",
+        downloader: Downloader,
         cache: PaperCache,
         index: FulltextIndex,
     ) -> str | None:

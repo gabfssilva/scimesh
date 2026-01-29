@@ -37,7 +37,7 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
     def __init__(
         self,
         api_key: str | None = None,
-        downloader: "Downloader | None" = None,
+        downloader: Downloader | None = None,
     ):
         super().__init__(api_key)
         self._downloader = downloader
@@ -342,15 +342,14 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
                 if response.status_code == 404:
                     return None
 
-                if response.status_code == 429:
-                    if attempt < max_retries - 1:
-                        logger.warning(
-                            "Rate limited (429), retrying in %.1f seconds",
-                            retry_delay,
-                        )
-                        await asyncio.sleep(retry_delay)
-                        retry_delay *= 2
-                        continue
+                if response.status_code == 429 and attempt < max_retries - 1:
+                    logger.warning(
+                        "Rate limited (429), retrying in %.1f seconds",
+                        retry_delay,
+                    )
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
 
                 response.raise_for_status()
                 break
@@ -421,7 +420,8 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
 
         # Get referenced papers (papers cited by this one)
         if direction in ("out", "both"):
-            url = f"{base_url}/{s2_id}/references?fields={API_FIELDS}&limit={min(max_results, 1000)}"
+            limit = min(max_results, 1000)
+            url = f"{base_url}/{s2_id}/references?fields={API_FIELDS}&limit={limit}"
             logger.debug("Fetching references: %s", url)
 
             response = await self._client.get(url, headers=headers)

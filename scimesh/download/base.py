@@ -30,7 +30,7 @@ class Downloader(ABC):
 
     name: str
 
-    def __init__(self, host_semaphores: "HostSemaphores | None" = None) -> None:
+    def __init__(self, host_semaphores: HostSemaphores | None = None) -> None:
         """Initialize the downloader.
 
         Args:

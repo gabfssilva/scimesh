@@ -37,7 +37,7 @@ class FallbackDownloader(Downloader):
     def __init__(
         self,
         *downloaders: Downloader,
-        host_semaphores: "HostSemaphores | None" = None,
+        host_semaphores: HostSemaphores | None = None,
     ):
         """Initialize with multiple downloaders.
 
@@ -50,7 +50,7 @@ class FallbackDownloader(Downloader):
         super().__init__(host_semaphores=host_semaphores)
         self._downloaders = downloaders
 
-    async def __aenter__(self) -> "FallbackDownloader":
+    async def __aenter__(self) -> FallbackDownloader:
         """Open all underlying downloaders."""
         await super().__aenter__()
         for d in self._downloaders:

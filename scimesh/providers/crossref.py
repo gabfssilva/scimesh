@@ -29,7 +29,7 @@ class CrossRef(FulltextFallbackMixin, Provider):
         self,
         api_key: str | None = None,
         mailto: str | None = None,
-        downloader: "Downloader | None" = None,
+        downloader: Downloader | None = None,
     ):
         super().__init__(api_key)
         self._mailto = mailto

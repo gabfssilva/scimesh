@@ -194,7 +194,7 @@ def search(
         bool,
         cyclopts.Parameter(
             name="--local-fulltext-indexing",
-            help="Download and index PDFs for fulltext search (for providers without native fulltext)",
+            help="Download and index PDFs for fulltext search (no native fulltext)",
         ),
     ] = False,
     scihub: Annotated[
@@ -435,7 +435,9 @@ def download(
     print(f"Downloaded: {success_count}/{total} | Failed: {fail_count}")
 
 
-async def _get_paper(paper_id: str, providers: list[str]) -> tuple[list[Paper], dict[str, Exception]]:
+async def _get_paper(
+    paper_id: str, providers: list[str]
+) -> tuple[list[Paper], dict[str, Exception]]:
     """Get a paper from multiple providers and return (papers, errors)."""
     papers: list[Paper] = []
     errors: dict[str, Exception] = {}
@@ -602,7 +604,8 @@ async def _get_citations(
         try:
             async with provider:
                 count = 0
-                async for paper in provider.citations(paper_id, direction=direction, max_results=max_results):  # type: ignore
+                stream = provider.citations(paper_id, direction=direction, max_results=max_results)
+                async for paper in stream:  # type: ignore
                     papers.append(paper)
                     count += 1
                     if count >= max_results:

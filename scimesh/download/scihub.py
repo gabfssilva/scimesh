@@ -34,7 +34,7 @@ class SciHubDownloader(Downloader):
         "sci-hub.ru",
     ]
 
-    def __init__(self, host_semaphores: "HostSemaphores | None" = None):
+    def __init__(self, host_semaphores: HostSemaphores | None = None):
         """Initialize the Sci-Hub downloader.
 
         Args:

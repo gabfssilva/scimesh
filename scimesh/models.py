@@ -2,7 +2,7 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, Callable
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,16 +131,18 @@ def merge_papers(papers: list[Paper]) -> Paper:
     # Citation count: highest value
     citations_count = None
     for p in papers:
-        if p.citations_count is not None:
-            if citations_count is None or p.citations_count > citations_count:
-                citations_count = p.citations_count
+        if p.citations_count is not None and (
+            citations_count is None or p.citations_count > citations_count
+        ):
+            citations_count = p.citations_count
 
     # References count: highest value
     references_count = None
     for p in papers:
-        if p.references_count is not None:
-            if references_count is None or p.references_count > references_count:
-                references_count = p.references_count
+        if p.references_count is not None and (
+            references_count is None or p.references_count > references_count
+        ):
+            references_count = p.references_count
 
     # Topics: union of all topics
     all_topics: set[str] = set()

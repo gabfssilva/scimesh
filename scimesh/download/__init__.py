@@ -8,13 +8,13 @@ from pathlib import Path
 import httpx
 
 from scimesh.cache import PaperCache
-
-logger = logging.getLogger(__name__)
 from scimesh.download.base import Downloader
 from scimesh.download.fallback import FallbackDownloader
 from scimesh.download.host_concurrency import HostSemaphores
 from scimesh.download.openaccess import OpenAccessDownloader
 from scimesh.download.scihub import SciHubDownloader
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass

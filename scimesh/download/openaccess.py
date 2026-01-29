@@ -26,7 +26,7 @@ class OpenAccessDownloader(Downloader):
 
     name = "open_access"
 
-    def __init__(self, host_semaphores: "HostSemaphores | None" = None):
+    def __init__(self, host_semaphores: HostSemaphores | None = None):
         """Initialize the Open Access downloader.
 
         Args:

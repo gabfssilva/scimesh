@@ -13,7 +13,7 @@ from scimesh.download.base import Downloader
 from scimesh.fulltext import FulltextIndex
 from scimesh.models import Paper
 from scimesh.providers._fulltext_fallback import FulltextFallbackMixin
-from scimesh.query.combinators import fulltext, title, Query
+from scimesh.query.combinators import Query, fulltext, title
 
 if TYPE_CHECKING:
     pass

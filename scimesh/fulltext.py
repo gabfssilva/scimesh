@@ -84,7 +84,8 @@ class FulltextIndex:
                     (paper_id,),
                 )
                 conn.execute(
-                    "UPDATE papers_meta SET content_hash = ?, indexed_at = CURRENT_TIMESTAMP WHERE paper_id = ?",
+                    "UPDATE papers_meta SET content_hash = ?, indexed_at = CURRENT_TIMESTAMP "
+                    "WHERE paper_id = ?",
                     (content_hash, paper_id),
                 )
             else:
