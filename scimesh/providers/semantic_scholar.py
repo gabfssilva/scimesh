@@ -58,9 +58,7 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
         year_start, year_end = self._collect_terms(query, terms)
         return (" ".join(terms), year_start, year_end)
 
-    def _collect_terms(
-        self, query: Query, terms: list[str]
-    ) -> tuple[int | None, int | None]:
+    def _collect_terms(self, query: Query, terms: list[str]) -> tuple[int | None, int | None]:
         """Recursively collect search terms and year range from query AST.
 
         Returns (year_start, year_end) if found.

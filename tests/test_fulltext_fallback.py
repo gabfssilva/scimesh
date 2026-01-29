@@ -56,6 +56,7 @@ def temp_index(tmp_path):
 def temp_cache(tmp_path):
     """Create a temporary cache directory."""
     from scimesh.cache import PaperCache
+
     return PaperCache(cache_dir=tmp_path / "cache")
 
 
@@ -98,9 +99,7 @@ class TestFulltextFallbackMixin:
     """Tests for FulltextFallbackMixin."""
 
     @pytest.mark.asyncio
-    async def test_no_downloader_returns_only_indexed(
-        self, temp_index, sample_papers
-    ):
+    async def test_no_downloader_returns_only_indexed(self, temp_index, sample_papers):
         """When no downloader is provided, only pre-indexed papers are returned."""
         # Pre-index one paper
         temp_index.add("10.1234/ml-paper", "This paper discusses transformer neural networks.")
@@ -216,9 +215,7 @@ class TestFulltextFallbackMixin:
         assert len(results) == 5
 
     @pytest.mark.asyncio
-    async def test_pre_indexed_papers_returned_immediately(
-        self, temp_index, sample_papers
-    ):
+    async def test_pre_indexed_papers_returned_immediately(self, temp_index, sample_papers):
         """Pre-indexed papers are returned immediately, others attempted for download."""
         # Pre-index papers that match
         temp_index.add("10.1234/ml-paper", "Content with transformer")
@@ -251,9 +248,7 @@ class TestFulltextFallbackMixin:
         assert "10.1234/stats-paper" in download_calls
 
     @pytest.mark.asyncio
-    async def test_papers_without_doi_skipped_for_download(
-        self, temp_index, temp_cache
-    ):
+    async def test_papers_without_doi_skipped_for_download(self, temp_index, temp_cache):
         """Papers without DOI are skipped during download phase."""
         papers = [
             Paper(title="No DOI 1", authors=(), year=2023, source="test", doi=None),

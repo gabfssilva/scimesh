@@ -258,7 +258,9 @@ def test_parse_item_open_access():
     provider = CrossRef()
     item = {
         "title": ["Open Access Paper"],
-        "license": [{"content-version": "vor", "URL": "https://creativecommons.org/licenses/by/4.0/"}],
+        "license": [
+            {"content-version": "vor", "URL": "https://creativecommons.org/licenses/by/4.0/"}
+        ],
     }
 
     paper = provider._parse_item(item)

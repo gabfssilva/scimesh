@@ -95,10 +95,7 @@ class TestMakeSafeFilename:
             == "10.1371_journal.pone.0123456"
         )
         # arXiv DOI format
-        assert (
-            cache._make_safe_filename("10.48550/arXiv.2301.00001")
-            == "10.48550_arXiv.2301.00001"
-        )
+        assert cache._make_safe_filename("10.48550/arXiv.2301.00001") == "10.48550_arXiv.2301.00001"
 
     def test_very_long_doi_uses_hash(self, tmp_path):
         """Test that very long DOIs are handled with hashing."""
@@ -203,7 +200,7 @@ class TestTextCache:
     def test_save_and_retrieve_unicode_text(self, tmp_path):
         """Test saving and retrieving Unicode text."""
         cache = PaperCache(cache_dir=tmp_path)
-        unicode_text = "Unicode: \u00e9\u00e8\u00ea \u4e2d\u6587 \U0001F4DA"
+        unicode_text = "Unicode: \u00e9\u00e8\u00ea \u4e2d\u6587 \U0001f4da"
 
         cache.save_text("10.1234/paper", unicode_text)
         retrieved = cache.get_text("10.1234/paper")

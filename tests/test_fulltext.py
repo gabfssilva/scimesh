@@ -1,7 +1,6 @@
 # tests/test_fulltext.py
 """Tests for the fulltext search module."""
 
-
 import pytest
 
 from scimesh.fulltext import FulltextIndex

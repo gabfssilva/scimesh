@@ -18,10 +18,12 @@ class TestHostSemaphores:
 
     def test_limits_can_be_configured(self):
         """Limits can be configured at initialization."""
-        semaphores = HostSemaphores({
-            "arxiv.org": 2,
-            "api.unpaywall.org": 3,
-        })
+        semaphores = HostSemaphores(
+            {
+                "arxiv.org": 2,
+                "api.unpaywall.org": 3,
+            }
+        )
         assert semaphores.get_limit("arxiv.org") == 2
         assert semaphores.get_limit("api.unpaywall.org") == 3
         assert semaphores.get_limit("other.com") is None
@@ -62,10 +64,12 @@ class TestHostSemaphores:
     @pytest.mark.asyncio
     async def test_different_hosts_independent(self):
         """Semaphores for different hosts are independent."""
-        semaphores = HostSemaphores({
-            "host1.com": 1,
-            "host2.com": 1,
-        })
+        semaphores = HostSemaphores(
+            {
+                "host1.com": 1,
+                "host2.com": 1,
+            }
+        )
 
         results = []
 

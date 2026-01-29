@@ -48,9 +48,7 @@ class CrossRef(FulltextFallbackMixin, Provider):
         self._collect_params(query, query_terms, filters)
         return (" ".join(query_terms), filters)
 
-    def _collect_params(
-        self, query: Query, query_terms: list[str], filters: list[str]
-    ) -> None:
+    def _collect_params(self, query: Query, query_terms: list[str], filters: list[str]) -> None:
         """Recursively collect query terms and filters from query AST."""
         match query:
             case Field(field="title", value=v):
@@ -181,17 +179,13 @@ class CrossRef(FulltextFallbackMixin, Provider):
                 # Get ORCID (CrossRef includes it as URL)
                 orcid = author_data.get("ORCID")
                 if orcid:
-                    orcid = orcid.replace("http://orcid.org/", "").replace(
-                        "https://orcid.org/", ""
-                    )
+                    orcid = orcid.replace("http://orcid.org/", "").replace("https://orcid.org/", "")
 
                 # Get affiliation
                 affiliations = author_data.get("affiliation", [])
                 affiliation = affiliations[0].get("name") if affiliations else None
 
-                authors.append(
-                    Author(name=name, affiliation=affiliation, orcid=orcid)
-                )
+                authors.append(Author(name=name, affiliation=affiliation, orcid=orcid))
 
         # Year from published-print or published-online
         year = 0

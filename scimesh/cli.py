@@ -37,6 +37,7 @@ def _setup_logging(log_level: str | None) -> None:
             format="%(levelname)s %(name)s: %(message)s",
         )
 
+
 PROVIDERS = {
     "arxiv": Arxiv,
     "openalex": OpenAlex,
@@ -426,9 +427,7 @@ def download(
     print(f"Downloading {len(dois)} papers to {output}/")
 
     # Run downloads
-    success_count, fail_count = asyncio.run(
-        _run_downloads(dois, output, scihub, host_concurrency)
-    )
+    success_count, fail_count = asyncio.run(_run_downloads(dois, output, scihub, host_concurrency))
 
     # Print summary
     total = success_count + fail_count

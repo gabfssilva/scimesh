@@ -98,9 +98,7 @@ class FulltextFallbackMixin:
                     continue
 
                 # Download, extract, index, check match → yield if matches
-                text = await self._try_download_single(
-                    paper.doi, downloader, cache, index
-                )
+                text = await self._try_download_single(paper.doi, downloader, cache, index)
                 if text and self._text_matches_term(text, term):
                     yield paper
         finally:
