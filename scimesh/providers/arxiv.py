@@ -1,4 +1,5 @@
 # scimesh/providers/arxiv.py
+import asyncio
 import logging
 import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterator
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 # arXiv API namespace
 ATOM_NS = "{http://www.w3.org/2005/Atom}"
 ARXIV_NS = "{http://arxiv.org/schemas/atom}"
+OPENSEARCH_NS = "{http://a9.com/-/spec/opensearch/1.1/}"
 
 
 class Arxiv(Provider):
@@ -31,6 +33,9 @@ class Arxiv(Provider):
 
     name = "arxiv"
     BASE_URL = "https://export.arxiv.org/api/query"
+    PAGE_SIZE = 100  # arXiv max per request
+    RATE_LIMIT_DELAY = 3.0  # Required delay between requests (seconds)
+    MAX_RESULTS = 30000  # arXiv hard limit
 
     def _load_from_env(self) -> str | None:
         return None  # arXiv doesn't require API key
@@ -97,38 +102,72 @@ class Arxiv(Provider):
             logger.debug("Empty query, returning no results")
             return
 
-        params = {
-            "search_query": query_str,
-            "start": 0,
-            "max_results": 100,
-            "sortBy": "relevance",
-            "sortOrder": "descending",
-        }
-
-        url = f"{self.BASE_URL}?{urlencode(params)}"
-        logger.debug("Requesting: %s", url)
-        response = await self._client.get(url)
-        response.raise_for_status()
-        logger.debug("Response status: %s", response.status_code)
-
         # Filter by year if YearRange is in query
         year_filter = self._extract_year_filter(query)
 
-        root = ET.fromstring(response.text)
-        for entry in root.findall(f"{ATOM_NS}entry"):
-            paper = self._parse_entry(entry)
-            if paper and self._matches_year_filter(paper, year_filter):
-                # Apply client-side citation filter
-                # Note: arXiv papers have citations_count=None, so they'll be filtered out
-                if citation_filter:
-                    if paper.citations_count is None:
-                        continue
-                    cit_count = paper.citations_count
-                    if citation_filter.min is not None and cit_count < citation_filter.min:
-                        continue
-                    if citation_filter.max is not None and cit_count > citation_filter.max:
-                        continue
-                yield paper
+        start = 0
+        is_first_request = True
+
+        while True:
+            # Respect arXiv hard limit
+            if start >= self.MAX_RESULTS:
+                logger.debug("Reached arXiv hard limit of %d results", self.MAX_RESULTS)
+                break
+
+            # Rate limiting: wait before subsequent requests
+            if not is_first_request:
+                await asyncio.sleep(self.RATE_LIMIT_DELAY)
+            is_first_request = False
+
+            params = {
+                "search_query": query_str,
+                "start": start,
+                "max_results": self.PAGE_SIZE,
+                "sortBy": "relevance",
+                "sortOrder": "descending",
+            }
+
+            url = f"{self.BASE_URL}?{urlencode(params)}"
+            logger.debug("Requesting: %s", url)
+            response = await self._client.get(url)
+            response.raise_for_status()
+            logger.debug("Response status: %s", response.status_code)
+
+            root = ET.fromstring(response.text)
+
+            # Parse total results from OpenSearch metadata
+            total_results_el = root.find(f"{OPENSEARCH_NS}totalResults")
+            total_results = (
+                int(total_results_el.text)
+                if total_results_el is not None and total_results_el.text
+                else 0
+            )
+            logger.debug("Total results: %d, start: %d", total_results, start)
+
+            entries = root.findall(f"{ATOM_NS}entry")
+            entries_count = len(entries)
+
+            for entry in entries:
+                paper = self._parse_entry(entry)
+                if paper and self._matches_year_filter(paper, year_filter):
+                    # Apply client-side citation filter
+                    # Note: arXiv papers have citations_count=None, so they'll be filtered out
+                    if citation_filter:
+                        if paper.citations_count is None:
+                            continue
+                        cit_count = paper.citations_count
+                        if citation_filter.min is not None and cit_count < citation_filter.min:
+                            continue
+                        if citation_filter.max is not None and cit_count > citation_filter.max:
+                            continue
+                    yield paper
+
+            # Move to next page
+            start += self.PAGE_SIZE
+
+            # Stop conditions: no more results or received partial page
+            if start >= total_results or entries_count < self.PAGE_SIZE:
+                break
 
     def _extract_year_filter(self, query: Query) -> YearRange | None:
         """Extract YearRange from query if present."""

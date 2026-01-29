@@ -1,6 +1,8 @@
 # tests/test_crossref.py
 import os
 
+import pytest
+
 from scimesh.providers.crossref import CrossRef
 from scimesh.query.combinators import abstract, author, doi, fulltext, keyword, title, year
 
@@ -267,3 +269,119 @@ def test_parse_item_open_access():
 
     assert paper is not None
     assert paper.open_access is True
+
+
+def test_page_size_constant():
+    """CrossRef provider should have PAGE_SIZE = 1000."""
+    provider = CrossRef()
+    assert provider.PAGE_SIZE == 1000
+
+
+def _make_crossref_response(items: list[dict], total: int, next_cursor: str | None) -> dict:
+    """Create a mock CrossRef API response."""
+    response = {
+        "status": "ok",
+        "message": {
+            "total-results": total,
+            "items": items,
+        },
+    }
+    if next_cursor:
+        response["message"]["next-cursor"] = next_cursor
+    return response
+
+
+def _make_crossref_item(doi: str, title_text: str, year: int) -> dict:
+    """Create a minimal CrossRef work object."""
+    return {
+        "DOI": doi,
+        "title": [title_text],
+        "published-print": {"date-parts": [[year]]},
+        "author": [],
+    }
+
+
+@pytest.mark.asyncio
+async def test_search_paginates_with_cursor():
+    """CrossRef search should paginate using cursor-based deep paging."""
+    from unittest.mock import MagicMock
+
+    provider = CrossRef()
+
+    # Create 3 pages of results (1000 + 1000 + 500 = 2500 total)
+    page1_items = [_make_crossref_item(f"10.1234/{i}", f"Paper {i}", 2023) for i in range(1000)]
+    page2_items = [
+        _make_crossref_item(f"10.1234/{i}", f"Paper {i}", 2023) for i in range(1000, 2000)
+    ]
+    page3_items = [
+        _make_crossref_item(f"10.1234/{i}", f"Paper {i}", 2023) for i in range(2000, 2500)
+    ]
+
+    page1_response = _make_crossref_response(page1_items, 2500, "cursor_page2")
+    page2_response = _make_crossref_response(page2_items, 2500, "cursor_page3")
+    page3_response = _make_crossref_response(page3_items, 2500, None)
+
+    call_count = 0
+
+    async def mock_get(url: str, headers: dict | None = None):
+        nonlocal call_count
+        call_count += 1
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+
+        if call_count == 1:
+            mock_response.json = MagicMock(return_value=page1_response)
+        elif call_count == 2:
+            mock_response.json = MagicMock(return_value=page2_response)
+        else:
+            mock_response.json = MagicMock(return_value=page3_response)
+
+        return mock_response
+
+    mock_client = MagicMock()
+    mock_client.get = mock_get
+
+    provider._client = mock_client
+
+    papers = []
+    async for paper in provider.search(title("test")):
+        papers.append(paper)
+
+    # Should have fetched all 2500 papers across 3 pages
+    assert len(papers) == 2500
+    assert call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_search_single_page_when_results_fit():
+    """CrossRef search should not paginate when results fit in single page."""
+    from unittest.mock import MagicMock
+
+    provider = CrossRef()
+
+    items = [_make_crossref_item(f"10.1234/{i}", f"Paper {i}", 2023) for i in range(50)]
+    response = _make_crossref_response(items, 50, None)
+
+    call_count = 0
+
+    async def mock_get(url: str, headers: dict | None = None):
+        nonlocal call_count
+        call_count += 1
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json = MagicMock(return_value=response)
+        return mock_response
+
+    mock_client = MagicMock()
+    mock_client.get = mock_get
+
+    provider._client = mock_client
+
+    papers = []
+    async for paper in provider.search(title("test")):
+        papers.append(paper)
+
+    assert len(papers) == 50
+    assert call_count == 1

@@ -1,5 +1,9 @@
 # tests/test_semantic_scholar.py
 import os
+import re
+from unittest.mock import MagicMock
+
+import pytest
 
 from scimesh.providers.semantic_scholar import SemanticScholar
 from scimesh.query.combinators import abstract, author, doi, fulltext, keyword, title, year
@@ -279,3 +283,163 @@ def test_parse_paper_invalid_date():
     paper = provider._parse_paper(paper_data)
     assert paper is not None
     assert paper.publication_date is None
+
+
+def test_page_size_constant():
+    """Test that PAGE_SIZE constant is 100 (Semantic Scholar max per request)."""
+    assert SemanticScholar.PAGE_SIZE == 100
+
+
+def test_max_total_results_constant():
+    """Test that MAX_TOTAL_RESULTS constant is 1000 (Semantic Scholar relevance search limit)."""
+    assert SemanticScholar.MAX_TOTAL_RESULTS == 1000
+
+
+def _make_semantic_scholar_response(results: list[dict], total: int, offset: int) -> dict:
+    """Create a mock Semantic Scholar API response."""
+    return {
+        "total": total,
+        "offset": offset,
+        "data": results,
+    }
+
+
+def _make_paper(paper_id: str, title: str, year: int) -> dict:
+    """Create a minimal Semantic Scholar paper object."""
+    return {
+        "paperId": paper_id,
+        "title": title,
+        "year": year,
+        "authors": [],
+    }
+
+
+@pytest.mark.asyncio
+async def test_search_paginates_with_offset():
+    """Semantic Scholar search should paginate using offset parameter."""
+    provider = SemanticScholar()
+
+    # Create 3 pages of results (100 + 100 + 50 = 250 total)
+    page1_papers = [_make_paper(f"paper{i}", f"Paper {i}", 2023) for i in range(100)]
+    page2_papers = [_make_paper(f"paper{i}", f"Paper {i}", 2023) for i in range(100, 200)]
+    page3_papers = [_make_paper(f"paper{i}", f"Paper {i}", 2023) for i in range(200, 250)]
+
+    page1_response = _make_semantic_scholar_response(page1_papers, 250, 0)
+    page2_response = _make_semantic_scholar_response(page2_papers, 250, 100)
+    page3_response = _make_semantic_scholar_response(page3_papers, 250, 200)
+
+    call_count = 0
+    captured_urls: list[str] = []
+
+    async def mock_get(url: str, headers: dict | None = None):
+        nonlocal call_count
+        call_count += 1
+        captured_urls.append(url)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+
+        if call_count == 1:
+            mock_response.json = MagicMock(return_value=page1_response)
+        elif call_count == 2:
+            mock_response.json = MagicMock(return_value=page2_response)
+        else:
+            mock_response.json = MagicMock(return_value=page3_response)
+
+        return mock_response
+
+    mock_client = MagicMock()
+    mock_client.get = mock_get
+
+    provider._client = mock_client
+
+    papers = []
+    async for paper in provider.search(title("test")):
+        papers.append(paper)
+
+    # Should have fetched all 250 papers across 3 pages
+    assert len(papers) == 250
+    assert call_count == 3
+
+    # Verify offset parameter is in URLs
+    # First call may not have offset or has offset=0
+    assert "offset=0" in captured_urls[0] or "offset" not in captured_urls[0]
+    assert "offset=100" in captured_urls[1]
+    assert "offset=200" in captured_urls[2]
+
+
+@pytest.mark.asyncio
+async def test_search_single_page_when_results_fit():
+    """Semantic Scholar search should not paginate when results fit in single page."""
+    provider = SemanticScholar()
+
+    papers_data = [_make_paper(f"paper{i}", f"Paper {i}", 2023) for i in range(50)]
+    response = _make_semantic_scholar_response(papers_data, 50, 0)
+
+    call_count = 0
+
+    async def mock_get(url: str, headers: dict | None = None):
+        nonlocal call_count
+        call_count += 1
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json = MagicMock(return_value=response)
+        return mock_response
+
+    mock_client = MagicMock()
+    mock_client.get = mock_get
+
+    provider._client = mock_client
+
+    papers = []
+    async for paper in provider.search(title("test")):
+        papers.append(paper)
+
+    assert len(papers) == 50
+    assert call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_search_stops_at_max_total_results():
+    """Semantic Scholar search should stop at MAX_TOTAL_RESULTS (1000)."""
+    provider = SemanticScholar()
+
+    # Simulate a query that has 1500 total results, but we should stop at 1000
+    page_count = 0
+
+    async def mock_get(url: str, headers: dict | None = None):
+        nonlocal page_count
+        page_count += 1
+
+        # Parse offset from URL to determine which page we're on
+        offset_match = re.search(r"offset=(\d+)", url)
+        offset = int(offset_match.group(1)) if offset_match else 0
+
+        # Generate 100 papers per page
+        papers = [
+            _make_paper(f"paper{offset + i}", f"Paper {offset + i}", 2023) for i in range(100)
+        ]
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json = MagicMock(
+            return_value=_make_semantic_scholar_response(papers, 1500, offset)
+        )
+        return mock_response
+
+    mock_client = MagicMock()
+    mock_client.get = mock_get
+
+    provider._client = mock_client
+
+    papers = []
+    async for paper in provider.search(title("test")):
+        papers.append(paper)
+
+    # Should stop at 1000 results (MAX_TOTAL_RESULTS), which is 10 pages
+    assert len(papers) == 1000
+    assert page_count == 10

@@ -35,6 +35,7 @@ class CrossRef(FulltextFallbackMixin, Provider):
 
     name = "crossref"
     BASE_URL = "https://api.crossref.org/works"
+    PAGE_SIZE = 1000  # CrossRef max per request
 
     def __init__(
         self,
@@ -115,7 +116,7 @@ class CrossRef(FulltextFallbackMixin, Provider):
         self,
         query: Query,
     ) -> AsyncIterator[Paper]:
-        """Execute the actual CrossRef API search."""
+        """Execute the actual CrossRef API search with cursor-based pagination."""
         if self._client is None:
             raise RuntimeError("Provider not initialized. Use 'async with provider:'")
 
@@ -130,16 +131,17 @@ class CrossRef(FulltextFallbackMixin, Provider):
         logger.debug("Query terms: %s", query_terms)
         logger.debug("Filters: %s", filters)
 
-        params: dict[str, str | int] = {
-            "rows": 1000,  # CrossRef max is 1000
+        # Build base params (cursor will be added in the loop)
+        base_params: dict[str, str | int] = {
+            "rows": self.PAGE_SIZE,
         }
 
         if query_terms:
-            params["query"] = query_terms
+            base_params["query"] = query_terms
 
         # Add mailto for polite pool (higher rate limits)
         if self._mailto:
-            params["mailto"] = self._mailto
+            base_params["mailto"] = self._mailto
 
         # Build filter string from collected filters
         filter_parts: list[str] = []
@@ -151,12 +153,12 @@ class CrossRef(FulltextFallbackMixin, Provider):
                 other_params.append(f)
 
         if filter_parts:
-            params["filter"] = ",".join(filter_parts)
+            base_params["filter"] = ",".join(filter_parts)
 
         # Add author query parameter if present
         for p in other_params:
             if p.startswith("query.author="):
-                params["query.author"] = p.replace("query.author=", "")
+                base_params["query.author"] = p.replace("query.author=", "")
 
         headers: dict[str, str] = {
             "Accept": "application/json",
@@ -166,29 +168,45 @@ class CrossRef(FulltextFallbackMixin, Provider):
         if self._api_key:
             headers["Crossref-Plus-API-Token"] = f"Bearer {self._api_key}"
 
-        url = f"{self.BASE_URL}?{urlencode(params)}"
-        logger.debug("Requesting: %s", url)
-        response = await self._client.get(url, headers=headers)
-        response.raise_for_status()
-        logger.debug("Response status: %s", response.status_code)
+        # Cursor-based pagination: start with "*" and continue until no next-cursor
+        cursor: str | None = "*"
 
-        data = response.json()
-        items = data.get("message", {}).get("items", [])
-        logger.debug("Results count: %s", len(items))
+        while cursor is not None:
+            params = dict(base_params)
+            params["cursor"] = cursor
 
-        for item in items:
-            paper = self._parse_item(item)
-            if paper:
-                # Apply client-side citation filter
-                if citation_filter:
-                    if paper.citations_count is None:
-                        continue
-                    cit_count = paper.citations_count
-                    if citation_filter.min is not None and cit_count < citation_filter.min:
-                        continue
-                    if citation_filter.max is not None and cit_count > citation_filter.max:
-                        continue
-                yield paper
+            url = f"{self.BASE_URL}?{urlencode(params)}"
+            logger.debug("Requesting: %s", url)
+            response = await self._client.get(url, headers=headers)
+            response.raise_for_status()
+            logger.debug("Response status: %s", response.status_code)
+
+            data = response.json()
+            message = data.get("message", {})
+            items = message.get("items", [])
+            logger.debug("Results count: %s", len(items))
+
+            for item in items:
+                paper = self._parse_item(item)
+                if paper:
+                    # Apply client-side citation filter
+                    if citation_filter:
+                        if paper.citations_count is None:
+                            continue
+                        cit_count = paper.citations_count
+                        if citation_filter.min is not None and cit_count < citation_filter.min:
+                            continue
+                        if citation_filter.max is not None and cit_count > citation_filter.max:
+                            continue
+                    yield paper
+
+            # Get next cursor for pagination
+            # Stop if: no next-cursor returned OR we got a partial page (less than PAGE_SIZE)
+            next_cursor = message.get("next-cursor")
+            if next_cursor and len(items) == self.PAGE_SIZE:
+                cursor = next_cursor
+            else:
+                cursor = None
 
     def _parse_item(self, item: dict) -> Paper | None:
         """Parse a CrossRef item into a Paper."""

@@ -4,7 +4,7 @@ import os
 from collections.abc import AsyncIterator
 from datetime import date
 from typing import Literal
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlparse
 
 from scimesh.models import Author, Paper
 from scimesh.providers.base import Provider
@@ -28,6 +28,7 @@ class Scopus(Provider):
 
     name = "scopus"
     BASE_URL = "https://api.elsevier.com/content/search/scopus"
+    PAGE_SIZE = 25  # Scopus max per request with COMPLETE view
 
     def _load_from_env(self) -> str | None:
         return os.getenv("SCOPUS_API_KEY")
@@ -95,36 +96,61 @@ class Scopus(Provider):
             "Accept": "application/json",
         }
 
-        params = {
-            "query": query_str,
-            "count": 25,  # Scopus max per request with COMPLETE view
-            "start": 0,
-            "view": "COMPLETE",  # Required to get abstract (dc:description)
-        }
+        cursor: str | None = "*"  # Initial cursor to start pagination
 
-        url = f"{self.BASE_URL}?{urlencode(params)}"
-        logger.debug("Requesting: %s", url)
-        response = await self._client.get(url, headers=headers)
-        response.raise_for_status()
-        logger.debug("Response status: %s", response.status_code)
+        while cursor is not None:
+            params: dict[str, str | int] = {
+                "query": query_str,
+                "count": self.PAGE_SIZE,
+                "view": "COMPLETE",  # Required to get abstract (dc:description)
+                "cursor": cursor,
+            }
 
-        data = response.json()
-        results = data.get("search-results", {}).get("entry", [])
-        logger.debug("Results count: %s", len(results))
+            url = f"{self.BASE_URL}?{urlencode(params)}"
+            logger.debug("Requesting: %s", url)
+            response = await self._client.get(url, headers=headers)
+            response.raise_for_status()
+            logger.debug("Response status: %s", response.status_code)
 
-        for entry in results:
-            paper = self._parse_entry(entry)
-            if paper:
-                # Apply client-side citation filter
-                if citation_filter:
-                    if paper.citations_count is None:
-                        continue
-                    cit_count = paper.citations_count
-                    if citation_filter.min is not None and cit_count < citation_filter.min:
-                        continue
-                    if citation_filter.max is not None and cit_count > citation_filter.max:
-                        continue
-                yield paper
+            data = response.json()
+            search_results = data.get("search-results", {})
+            results = search_results.get("entry", [])
+            logger.debug("Results count: %s", len(results))
+
+            for entry in results:
+                paper = self._parse_entry(entry)
+                if paper:
+                    # Apply client-side citation filter
+                    if citation_filter:
+                        if paper.citations_count is None:
+                            continue
+                        cit_count = paper.citations_count
+                        if citation_filter.min is not None and cit_count < citation_filter.min:
+                            continue
+                        if citation_filter.max is not None and cit_count > citation_filter.max:
+                            continue
+                    yield paper
+
+            # Get next cursor from response links
+            cursor = self._extract_next_cursor(search_results)
+
+            # Stop if we received a partial page (less than PAGE_SIZE results)
+            if len(results) < self.PAGE_SIZE:
+                break
+
+    def _extract_next_cursor(self, search_results: dict) -> str | None:
+        """Extract the next cursor from Scopus response links."""
+        links = search_results.get("link", [])
+        for link in links:
+            if link.get("@ref") == "next":
+                href = link.get("@href", "")
+                if href:
+                    parsed = urlparse(href)
+                    query_params = parse_qs(parsed.query)
+                    cursor_values = query_params.get("cursor", [])
+                    if cursor_values:
+                        return cursor_values[0]
+        return None
 
     def _parse_entry(self, entry: dict) -> Paper | None:
         """Parse a Scopus entry into a Paper."""

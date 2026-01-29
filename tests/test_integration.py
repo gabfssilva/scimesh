@@ -94,3 +94,34 @@ def test_provider_translation_consistency():
     assert "ti:" in arxiv_query or "au:" in arxiv_query
     assert "neural networks" in openalex_search or "raw_author_name" in openalex_filters.lower()
     assert "TITLE(" in scopus_query or "AUTH(" in scopus_query
+
+
+def test_all_providers_have_pagination_support():
+    """Verify all providers have pagination attributes."""
+    from scimesh.providers import Arxiv, CrossRef, OpenAlex, Scopus, SemanticScholar
+
+    # arXiv: offset-based with rate limiting
+    assert hasattr(Arxiv, "PAGE_SIZE")
+    assert hasattr(Arxiv, "RATE_LIMIT_DELAY")
+    assert hasattr(Arxiv, "MAX_RESULTS")
+    assert Arxiv.PAGE_SIZE == 100
+    assert Arxiv.RATE_LIMIT_DELAY == 3.0
+    assert Arxiv.MAX_RESULTS == 30000
+
+    # Scopus: cursor-based
+    assert hasattr(Scopus, "PAGE_SIZE")
+    assert Scopus.PAGE_SIZE == 25
+
+    # CrossRef: cursor-based
+    assert hasattr(CrossRef, "PAGE_SIZE")
+    assert CrossRef.PAGE_SIZE == 1000
+
+    # Semantic Scholar: offset-based with limit
+    assert hasattr(SemanticScholar, "PAGE_SIZE")
+    assert hasattr(SemanticScholar, "MAX_TOTAL_RESULTS")
+    assert SemanticScholar.PAGE_SIZE == 100
+    assert SemanticScholar.MAX_TOTAL_RESULTS == 1000
+
+    # OpenAlex: already has pagination (cursor-based)
+    # Just verify it exists and has a consistent pattern
+    assert OpenAlex.MAX_OR_TERMS == 10  # existing constant
