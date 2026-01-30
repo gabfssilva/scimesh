@@ -7,14 +7,14 @@
 
 A Python library for systematic literature search across multiple academic databases.
 
-Search arXiv, OpenAlex, Scopus, Semantic Scholar, and CrossRef with a unified API. Export to BibTeX, RIS, CSV, or JSON. Download PDFs via Open Access (Unpaywall). Index and search full-text content locally.
+Search arXiv, OpenAlex, Scopus, Semantic Scholar, and CrossRef with a unified API. Export to BibTeX, RIS, CSV, JSON, or Vault. Download PDFs via Open Access (Unpaywall). Index and search full-text content locally.
 
 ## Features
 
 - **Multi-provider search** - arXiv, OpenAlex, Scopus, Semantic Scholar, CrossRef (parallel queries)
 - **Scopus-style query syntax** - `TITLE(transformers) AND AUTHOR(Vaswani)`
 - **Programmatic query API** - Compose queries with Python operators (`&`, `|`, `~`)
-- **Export formats** - BibTeX, RIS, CSV, JSON
+- **Export formats** - BibTeX, RIS, CSV, JSON, Vault
 - **PDF download** - Open Access via Unpaywall (Sci-Hub opt-in) with local caching
 - **Fetch specific papers** - Get paper metadata by DOI with `scimesh get`
 - **Citation graph** - Get papers citing or cited by a paper with `scimesh citations`
@@ -316,7 +316,7 @@ scimesh search <query> [OPTIONS]
 |------|-------------|---------|
 | `-p, --provider` | Providers (comma-separated or repeated): arxiv, openalex, scopus, semantic_scholar, crossref | openalex |
 | `-n, --max` | Max total results | 100 |
-| `-f, --format` | Output: tree, csv, json, bibtex, ris | tree |
+| `-f, --format` | Output: tree, csv, json, bibtex, ris, vault | tree |
 | `-o, --output` | Output file path | stdout |
 | `--on-error` | Error handling: fail, warn, ignore | warn |
 | `--no-dedupe` | Disable deduplication | false |
@@ -487,6 +487,126 @@ providers = [
 | CrossRef | Yes | Yes | No | Client-side |
 
 *arXiv does not provide citation counts, so citation filters return no results.
+
+---
+
+## Vault Export
+
+The `vault` format exports papers to a folder structure where each paper gets its own directory containing an `index.yaml` with metadata and an optional `fulltext.pdf`. A root `index.yaml` tracks the full corpus with query, providers, statistics, and paper list.
+
+This structure is designed to be **LLM-friendly**: agents can read the YAML metadata, process PDFs, and extend the schema with custom fields for screening, annotations, or workflow tracking. The format supports incremental updates—run searches multiple times and new papers are added while existing ones are preserved.
+
+### Usage
+
+```bash
+# Export search results to vault
+scimesh search "TITLE(transformer)" -f vault -o ./papers-vault
+
+# With PDF downloads (Open Access)
+scimesh search "TITLE(attention)" -f vault -o ./review-vault
+
+# With Sci-Hub fallback for paywalled papers
+scimesh search "TITLE(BERT)" -f vault -o ./review-vault --scihub
+
+# Run again to add more papers (incremental)
+scimesh search "TITLE(GPT)" -f vault -o ./review-vault
+```
+
+### Structure
+
+```
+papers-vault/
+├── index.yaml                          # Root index with query, stats, paper list
+├── 2017-vaswani-attention-is-all-you/
+│   ├── index.yaml                      # Paper metadata
+│   └── fulltext.pdf                    # PDF (if downloaded)
+├── 2018-devlin-bert-pre-training-of/
+│   ├── index.yaml
+│   └── fulltext.pdf
+└── 2020-brown-language-models-are/
+    ├── index.yaml
+    └── fulltext.pdf
+```
+
+### Root index.yaml
+
+```yaml
+query: "TITLE(transformer) AND PUBYEAR > 2016"
+providers:
+  - openalex
+  - arxiv
+searched_at: "2024-01-15T10:30:00Z"
+updated_at: "2024-01-16T14:00:00Z"  # Present after incremental updates
+stats:
+  total: 150
+  by_provider:
+    openalex: 100
+    arxiv: 50
+  with_pdf: 120
+  deduplicated: 5
+  skipped: 10
+papers:
+  - path: 2017-vaswani-attention-is-all-you
+    doi: "10.48550/arXiv.1706.03762"
+    title: "Attention Is All You Need"
+  - path: 2018-devlin-bert-pre-training-of
+    doi: "10.18653/v1/N19-1423"
+    title: "BERT: Pre-training of Deep Bidirectional Transformers"
+  # ...
+```
+
+### Paper index.yaml
+
+```yaml
+title: "Attention Is All You Need"
+authors:
+  - Ashish Vaswani
+  - Noam Shazeer
+  - Niki Parmar
+year: 2017
+doi: "10.48550/arXiv.1706.03762"
+sources:
+  - arxiv
+  - openalex
+urls:
+  arxiv: "https://arxiv.org/abs/1706.03762"
+  openalex: "https://openalex.org/W2963403868"
+tags:
+  - machine-learning
+  - attention-mechanism
+citations: 95000
+journal: "Advances in Neural Information Processing Systems"
+open_access: true
+pdf: fulltext.pdf
+abstract: "The dominant sequence transduction models are based on complex recurrent..."
+```
+
+### Designed for LLM Agents
+
+The vault format enables LLM agents to perform systematic literature reviews autonomously. An agent can:
+
+1. **Build the corpus** - Run `scimesh search` to populate the vault with papers and PDFs
+2. **Understand the scope** - Read `index.yaml` to see all papers, stats, and the original query
+3. **Screen papers** - Read each paper's metadata and abstract, then add `screening_status: included/excluded` and `exclusion_reason` fields
+4. **Extract data** - Read PDFs, extract relevant findings, and store them in custom fields like `extracted_findings` or `methods_summary`
+5. **Track progress** - Add workflow fields like `review_stage`, `last_reviewed`, or `assigned_to`
+6. **Generate synthesis** - Aggregate structured data across papers to produce summaries, identify themes, or flag contradictions
+
+The folder-per-paper structure means agents can also create additional files: `notes.md` for detailed annotations, `figures/` for extracted images, or `quotes.yaml` for key passages. The vault grows organically with the review process.
+
+### Extensibility
+
+The format is intentionally minimal. Agents can add any fields they need:
+
+| Use Case | Custom Fields |
+|----------|---------------|
+| Screening | `screening_status`, `exclusion_reason`, `screener_notes` |
+| Quality assessment | `quality_score`, `bias_risk`, `evidence_level` |
+| Data extraction | `extracted_data`, `findings`, `methods_summary` |
+| Synthesis | `themes`, `contradictions`, `synthesis_notes` |
+| Workflow | `assigned_to`, `review_stage`, `last_reviewed` |
+
+The vault grows with your workflow. Start with metadata, add structure as needed.
 
 ---
 
