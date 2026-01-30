@@ -203,3 +203,68 @@ def test_parse_citedby_with_title():
 def test_parse_citedby_with_pubyear():
     q = parse("TITLE(ml) AND PUBYEAR > 2020 AND CITEDBY >= 50")
     assert isinstance(q, And)
+
+
+# Tests for AND inside field operators
+
+
+def test_parse_title_with_and_inside():
+    """TITLE with AND inside should expand to AND of Fields."""
+    q = parse('TITLE("imputation" AND "tabular")')
+    assert isinstance(q, And)
+    assert q.left == Field("title", "imputation")
+    assert q.right == Field("title", "tabular")
+
+
+def test_parse_title_with_multiple_and_inside():
+    """TITLE with multiple AND terms."""
+    q = parse("TITLE(a AND b AND c)")
+    # Should be: And(And(Field(title, a), Field(title, b)), Field(title, c))
+    assert isinstance(q, And)
+    assert isinstance(q.left, And)
+    assert q.left.left == Field("title", "a")
+    assert q.left.right == Field("title", "b")
+    assert q.right == Field("title", "c")
+
+
+def test_parse_title_abs_with_and_inside():
+    """TITLE-ABS with AND inside should expand properly.
+
+    TITLE-ABS("a" AND "b") should become:
+    And(
+        Or(Field(title, "a"), Field(abstract, "a")),
+        Or(Field(title, "b"), Field(abstract, "b"))
+    )
+    """
+    q = parse('TITLE-ABS("imputation" AND "tabular")')
+    assert isinstance(q, And)
+    # Left side: TITLE-ABS("imputation")
+    assert isinstance(q.left, Or)
+    assert q.left.left == Field("title", "imputation")
+    assert q.left.right == Field("abstract", "imputation")
+    # Right side: TITLE-ABS("tabular")
+    assert isinstance(q.right, Or)
+    assert q.right.left == Field("title", "tabular")
+    assert q.right.right == Field("abstract", "tabular")
+
+
+def test_parse_title_with_and_and_or_inside():
+    """TITLE with mixed AND and OR inside - AND has higher precedence."""
+    q = parse('TITLE("a" OR "b" AND "c")')
+    # Should be: Or(Field(title, a), And(Field(title, b), Field(title, c)))
+    assert isinstance(q, Or)
+    assert q.left == Field("title", "a")
+    assert isinstance(q.right, And)
+    assert q.right.left == Field("title", "b")
+    assert q.right.right == Field("title", "c")
+
+
+def test_parse_title_with_parentheses_inside():
+    """TITLE with parentheses inside for grouping."""
+    q = parse('TITLE(("a" OR "b") AND "c")')
+    # Should be: And(Or(Field(title, a), Field(title, b)), Field(title, c))
+    assert isinstance(q, And)
+    assert isinstance(q.left, Or)
+    assert q.left.left == Field("title", "a")
+    assert q.left.right == Field("title", "b")
+    assert q.right == Field("title", "c")

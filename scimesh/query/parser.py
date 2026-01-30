@@ -125,16 +125,25 @@ class Parser:
         return self._apply_fields_to_content(content, fields)
 
     def _parse_field_content(self) -> Query:
-        """Parse content inside a field specifier (may contain OR)."""
+        """Parse content inside a field specifier (may contain OR/AND)."""
         return self._parse_field_content_or()
 
     def _parse_field_content_or(self) -> Query:
-        """Parse OR expressions inside field content."""
-        left = self._parse_field_content_primary()
+        """Parse OR expressions inside field content (lowest precedence)."""
+        left = self._parse_field_content_and()
         while self.peek() == "OR":
             self.consume()
-            right = self._parse_field_content_primary()
+            right = self._parse_field_content_and()
             left = Or(left, right)
+        return left
+
+    def _parse_field_content_and(self) -> Query:
+        """Parse AND expressions inside field content (higher precedence than OR)."""
+        left = self._parse_field_content_primary()
+        while self.peek() == "AND":
+            self.consume()
+            right = self._parse_field_content_primary()
+            left = And(left, right)
         return left
 
     def _parse_field_content_primary(self) -> Query:
@@ -148,10 +157,10 @@ class Parser:
             self.expect(")")
             return expr
 
-        # Collect consecutive terms (not OR, not closing paren)
+        # Collect consecutive terms (not AND, OR, or closing paren)
         # This handles multi-word terms like: TITLE(machine learning)
         terms: list[str] = []
-        while self.peek() not in (None, "OR", ")"):
+        while self.peek() not in (None, "AND", "OR", ")"):
             terms.append(self.consume())
 
         if not terms:
