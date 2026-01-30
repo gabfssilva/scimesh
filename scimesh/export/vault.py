@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import unicodedata
@@ -245,15 +246,18 @@ class VaultExporter:
         self,
         downloader: Any | None = None,
         use_scihub: bool = False,
+        max_concurrent_downloads: int = 5,
     ):
         """Initialize VaultExporter.
 
         Args:
             downloader: Optional FallbackDownloader for PDF downloads.
             use_scihub: Whether Sci-Hub fallback is enabled.
+            max_concurrent_downloads: Maximum concurrent PDF downloads.
         """
         self.downloader = downloader
         self.use_scihub = use_scihub
+        self.max_concurrent_downloads = max_concurrent_downloads
 
     def export(
         self,
@@ -369,32 +373,59 @@ class VaultExporter:
         if existing_data and "papers" in existing_data:
             existing_paths = {p["path"] for p in existing_data["papers"]}
 
+        # Filter papers to export (skip existing)
+        papers_to_export: list[tuple[Paper, str, Path]] = []
         for paper in result.papers:
             folder_name = generate_folder_name(paper)
             paper_dir = output_dir / folder_name
 
-            # Skip if already exists
             if paper_dir.exists() or folder_name in existing_paths:
                 stats.skipped += 1
                 logger.debug("Skipping existing: %s", folder_name)
                 continue
 
-            # Create paper folder
-            paper_dir.mkdir(parents=True, exist_ok=True)
+            papers_to_export.append((paper, folder_name, paper_dir))
 
-            # Try to download PDF
-            pdf_filename: str | None = None
-            if self.downloader and paper.doi:
+        # Download PDFs concurrently
+        semaphore = asyncio.Semaphore(self.max_concurrent_downloads)
+
+        async def download_pdf(paper: Paper, folder_name: str) -> bytes | None:
+            """Download PDF with concurrency limit."""
+            if not self.downloader:
+                return None
+            if not paper.doi:
+                logger.info("  [--] No DOI: %s", folder_name)
+                return None
+
+            async with semaphore:
                 try:
                     pdf_bytes = await self.downloader.download(paper.doi)
                     if pdf_bytes:
-                        pdf_path = paper_dir / "fulltext.pdf"
-                        pdf_path.write_bytes(pdf_bytes)
-                        pdf_filename = "fulltext.pdf"
-                        stats.with_pdf += 1
-                        logger.debug("Downloaded PDF for: %s", folder_name)
+                        logger.info("  [OK] PDF: %s", folder_name)
+                        return pdf_bytes
+                    logger.info("  [--] PDF not found: %s", folder_name)
                 except Exception as e:
-                    logger.debug("PDF download failed for %s: %s", paper.doi, e)
+                    logger.info("  [!!] PDF error: %s - %s", folder_name, e)
+                return None
+
+        # Start all downloads concurrently
+        download_tasks = [
+            download_pdf(paper, folder_name) for paper, folder_name, _ in papers_to_export
+        ]
+        pdf_results = await asyncio.gather(*download_tasks)
+
+        # Write papers to disk (sequential to avoid I/O contention)
+        for (paper, folder_name, paper_dir), pdf_bytes in zip(
+            papers_to_export, pdf_results, strict=True
+        ):
+            paper_dir.mkdir(parents=True, exist_ok=True)
+
+            pdf_filename: str | None = None
+            if pdf_bytes:
+                pdf_path = paper_dir / "fulltext.pdf"
+                pdf_path.write_bytes(pdf_bytes)
+                pdf_filename = "fulltext.pdf"
+                stats.with_pdf += 1
 
             # Write paper index.yaml
             paper_index = build_paper_index(paper, pdf_filename)
@@ -411,7 +442,6 @@ class VaultExporter:
 
             stats.total += 1
             stats.by_provider[paper.source] = stats.by_provider.get(paper.source, 0) + 1
-
             logger.debug("Exported: %s", folder_name)
 
         # Write root index.yaml

@@ -53,7 +53,16 @@ class Downloader(ABC):
         ...
 
     async def __aenter__(self) -> Self:
-        self._client = httpx.AsyncClient(timeout=30.0)
+        self._client = httpx.AsyncClient(
+            timeout=30.0,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+            },
+        )
         return self
 
     async def __aexit__(self, *_: object) -> None:
