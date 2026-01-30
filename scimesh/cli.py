@@ -299,16 +299,18 @@ def search(
                 print(f"  Found: {paper.title[:50]}...", file=sys.stderr)
 
             result = SearchResult(papers=papers)
-            exporter = VaultExporter(downloader=downloader, use_scihub=scihub)
 
             print(f"\nExporting {len(papers)} papers to {output}/", file=sys.stderr)
 
-            stats = await exporter.export_async(
-                result=result,
-                output_dir=output,
-                query=query,
-                providers=providers,
-            )
+            # Use async with to initialize the downloader
+            async with downloader:
+                exporter = VaultExporter(downloader=downloader, use_scihub=scihub)
+                stats = await exporter.export_async(
+                    result=result,
+                    output_dir=output,
+                    query=query,
+                    providers=providers,
+                )
 
             print(
                 f"Exported: {stats.total} | Skipped: {stats.skipped} | With PDF: {stats.with_pdf}",
