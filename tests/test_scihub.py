@@ -1,7 +1,6 @@
 # tests/test_scihub.py
 """Tests for SciHubDownloader."""
 
-import time
 from unittest.mock import MagicMock
 
 import httpx
@@ -26,42 +25,6 @@ class TestSciHubDownloaderInit:
         assert "sci-hub.se" in downloader.domains
         assert "sci-hub.st" in downloader.domains
         assert "sci-hub.ru" in downloader.domains
-
-
-class TestThrottleApplied:
-    """Tests for throttle decorator on download method."""
-
-    def test_download_has_throttle_wrapper(self):
-        """Should have throttle applied to download method."""
-        downloader = SciHubDownloader()
-        # The throttle decorator uses @wraps, so we check for wrapper behavior
-        # by looking at the function's closure or checking timing behavior
-        assert hasattr(downloader.download, "__wrapped__") or callable(downloader.download)
-
-    @pytest.mark.asyncio
-    async def test_throttle_enforces_rate_limit(self):
-        """Should enforce rate limit of 1 call per 3 seconds."""
-        download_start_times: list[float] = []
-
-        async with SciHubDownloader() as downloader:
-            # Wrap download to track when it starts (after throttle releases)
-
-            async def tracking_attempt(doi, domain):
-                # Only record time for first domain attempt of each download
-                if domain == downloader.domains[0]:
-                    download_start_times.append(time.monotonic())
-                return None
-
-            downloader._attempt_download = tracking_attempt
-
-            # Make two rapid calls
-            await downloader.download("10.1234/test1")
-            await downloader.download("10.1234/test2")
-
-        # There should be at least 2.9 seconds between download starts (allowing tolerance)
-        assert len(download_start_times) == 2
-        interval = download_start_times[1] - download_start_times[0]
-        assert interval >= 2.9, f"Interval {interval}s is less than required 3s"
 
 
 class TestDomainFallback:

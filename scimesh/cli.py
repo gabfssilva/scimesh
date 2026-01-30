@@ -239,16 +239,13 @@ def search(
     if format == "tree" and output is None and not sys.stdout.isatty():
         format = "json"
 
-    # Validate format early
-    try:
-        exporter = get_exporter(format)
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    # Special validation for vault format
-    if format == "vault" and output is None:
-        print("Error: --output is required for vault format", file=sys.stderr)
+    # Special validation for vault format (handled separately below)
+    if format == "vault":
+        if output is None:
+            print("Error: --output is required for vault format", file=sys.stderr)
+            sys.exit(1)
+    elif format not in ("tree", "csv", "json", "bibtex", "bib", "ris"):
+        print(f"Error: Unknown export format: {format}", file=sys.stderr)
         sys.exit(1)
 
     # Create provider instances
@@ -279,6 +276,8 @@ def search(
     # Vault format has special handling
     if format == "vault":
         from scimesh.export.vault import VaultExporter
+
+        assert output is not None  # Validated above
 
         async def _export_vault() -> int:
             downloader = _create_downloader(host_concurrency, scihub)
@@ -320,6 +319,9 @@ def search(
 
         asyncio.run(_export_vault())
         return
+
+    # Get exporter for non-vault formats
+    exporter = get_exporter(format)
 
     # Non-streaming path for other formats or file output
     async def _collect_with_limit() -> SearchResult:
@@ -553,7 +555,11 @@ def get(
         print(f"Available: {list(GET_PROVIDERS.keys())}", file=sys.stderr)
         sys.exit(1)
 
-    # Validate format early
+    # Validate format (vault not supported for get command)
+    if format == "vault":
+        print("Error: vault format is not supported for get command", file=sys.stderr)
+        sys.exit(1)
+
     try:
         exporter = get_exporter(format)
     except ValueError as e:
@@ -729,7 +735,11 @@ def citations(
         print(f"Available: {list(CITATIONS_PROVIDERS.keys())}", file=sys.stderr)
         sys.exit(1)
 
-    # Validate format early
+    # Validate format (vault not supported for citations command)
+    if format == "vault":
+        print("Error: vault format is not supported for citations command", file=sys.stderr)
+        sys.exit(1)
+
     try:
         exporter = get_exporter(format)
     except ValueError as e:

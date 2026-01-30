@@ -164,8 +164,17 @@ def test_tree_export_empty_result():
     assert output == "No papers found."
 
 
-def test_get_exporter_vault():
-    exporter = get_exporter("vault")
+def test_get_exporter_vault_raises():
+    """Vault has a different interface, must be imported directly."""
+    import pytest
+
+    with pytest.raises(ValueError, match="Unknown export format: vault"):
+        get_exporter("vault")
+
+
+def test_vault_exporter_direct_import():
+    """VaultExporter should be imported directly."""
     from scimesh.export.vault import VaultExporter
 
+    exporter = VaultExporter()
     assert isinstance(exporter, VaultExporter)
