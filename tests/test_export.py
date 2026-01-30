@@ -162,3 +162,10 @@ def test_tree_export_empty_result():
     exporter = TreeExporter()
     output = exporter.to_string(result)
     assert output == "No papers found."
+
+
+def test_get_exporter_vault():
+    exporter = get_exporter("vault")
+    from scimesh.export.vault import VaultExporter
+
+    assert isinstance(exporter, VaultExporter)

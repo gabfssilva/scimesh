@@ -205,3 +205,15 @@ def test_cli_search_json_when_piped(mock_search, mock_isatty, mock_search_result
     # JSON format when piped
     assert '"papers"' in captured.out
     assert '"title": "Test Paper"' in captured.out
+
+
+def test_search_vault_format_requires_output(capsys):
+    """Vault format requires --output flag."""
+    from scimesh.cli import app
+
+    with pytest.raises(SystemExit) as exc_info:
+        app(["search", "TITLE(test)", "--format", "vault"])
+
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert "--output" in captured.err.lower() or "output" in captured.err.lower()

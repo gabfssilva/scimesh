@@ -505,12 +505,13 @@ wheels = [
 
 [[package]]
 name = "scimesh"
-version = "0.1.dev14+g15cfc8aca.d20260129"
+version = "0.1.6.dev2+g70f6c7d2e.d20260130"
 source = { editable = "." }
 dependencies = [
     { name = "cyclopts" },
     { name = "httpx" },
     { name = "pymupdf4llm" },
+    { name = "pyyaml" },
     { name = "tenacity" },
 ]
 
@@ -529,6 +530,7 @@ requires-dist = [
     { name = "cyclopts", specifier = ">=4.5.1" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "pymupdf4llm", specifier = ">=0.2.9" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "tenacity", specifier = ">=9.1.2" },
 ]
 

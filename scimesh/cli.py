@@ -171,12 +171,14 @@ def search(
     ] = ["openalex"],
     output: Annotated[
         Path | None,
-        cyclopts.Parameter(name=["--output", "-o"], help="Output file path"),
+        cyclopts.Parameter(
+            name=["--output", "-o"], help="Output file path (required for vault format)"
+        ),
     ] = None,
     format: Annotated[
         str,
         cyclopts.Parameter(
-            name=["--format", "-f"], help="Output format: tree, csv, json, bibtex, ris"
+            name=["--format", "-f"], help="Output format: tree, csv, json, bibtex, ris, vault"
         ),
     ] = "tree",
     max_results: Annotated[
@@ -244,6 +246,11 @@ def search(
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
+    # Special validation for vault format
+    if format == "vault" and output is None:
+        print("Error: --output is required for vault format", file=sys.stderr)
+        sys.exit(1)
+
     # Create provider instances
     provider_instances: list[Provider] = []
     downloader = _create_downloader(host_concurrency, scihub) if local_fulltext_indexing else None
@@ -267,6 +274,49 @@ def search(
             )
         )
         print(f"\nTotal: {count} papers", file=sys.stderr)
+        return
+
+    # Vault format has special handling
+    if format == "vault":
+        from scimesh.export.vault import VaultExporter
+
+        async def _export_vault() -> int:
+            downloader = _create_downloader(host_concurrency, scihub)
+
+            stream = do_search(
+                query,
+                providers=provider_instances,
+                on_error=on_error,  # type: ignore
+                dedupe=not no_dedupe,
+                stream=True,
+            )
+            if max_results is not None:
+                stream = take(max_results, stream)
+
+            papers: list[Paper] = []
+            async for paper in stream:
+                papers.append(paper)
+                print(f"  Found: {paper.title[:50]}...", file=sys.stderr)
+
+            result = SearchResult(papers=papers)
+            exporter = VaultExporter(downloader=downloader, use_scihub=scihub)
+
+            print(f"\nExporting {len(papers)} papers to {output}/", file=sys.stderr)
+
+            stats = await exporter.export_async(
+                result=result,
+                output_dir=output,
+                query=query,
+                providers=providers,
+            )
+
+            print(
+                f"Exported: {stats.total} | Skipped: {stats.skipped} | With PDF: {stats.with_pdf}",
+                file=sys.stderr,
+            )
+            return stats.total
+
+        asyncio.run(_export_vault())
         return
 
     # Non-streaming path for other formats or file output
