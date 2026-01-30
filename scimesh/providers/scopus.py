@@ -96,6 +96,13 @@ class Scopus(Provider):
             "Accept": "application/json",
         }
 
+        # Optimize: sort by citedby-count descending when filtering by min citations
+        # This enables early termination when we hit papers below the threshold
+        sort_param: str | None = None
+        if citation_filter and citation_filter.min is not None:
+            sort_param = "-citedby-count"
+            logger.debug("Using sort=%s for citation filter optimization", sort_param)
+
         cursor: str | None = "*"  # Initial cursor to start pagination
 
         while cursor is not None:
@@ -105,6 +112,8 @@ class Scopus(Provider):
                 "view": "COMPLETE",  # Required to get abstract (dc:description)
                 "cursor": cursor,
             }
+            if sort_param:
+                params["sort"] = sort_param
 
             url = f"{self.BASE_URL}?{urlencode(params)}"
             logger.debug("Requesting: %s", url)
@@ -117,19 +126,42 @@ class Scopus(Provider):
             results = search_results.get("entry", [])
             logger.debug("Results count: %s", len(results))
 
+            stop_pagination = False
             for entry in results:
                 paper = self._parse_entry(entry)
-                if paper:
-                    # Apply client-side citation filter
-                    if citation_filter:
-                        if paper.citations_count is None:
-                            continue
-                        cit_count = paper.citations_count
-                        if citation_filter.min is not None and cit_count < citation_filter.min:
-                            continue
-                        if citation_filter.max is not None and cit_count > citation_filter.max:
-                            continue
-                    yield paper
+                if not paper:
+                    continue
+
+                cit_count = paper.citations_count
+
+                # Early termination: when sorted by -citedby-count and we find
+                # a paper below min, all remaining papers will also be below min
+                if (
+                    citation_filter
+                    and citation_filter.min is not None
+                    and sort_param
+                    and (cit_count is None or cit_count < citation_filter.min)
+                ):
+                    logger.debug(
+                        "Early stop: citations=%s < min=%s",
+                        cit_count,
+                        citation_filter.min,
+                    )
+                    stop_pagination = True
+                    break
+
+                # Filter by max (still need to check each paper)
+                if (
+                    citation_filter
+                    and citation_filter.max is not None
+                    and (cit_count is None or cit_count > citation_filter.max)
+                ):
+                    continue
+
+                yield paper
+
+            if stop_pagination:
+                break
 
             # Get next cursor from response links
             cursor = self._extract_next_cursor(search_results)
