@@ -109,11 +109,17 @@ Then show the FULL query for chosen strategy in Scala block.
 
 ## Step 4: Calibrate
 
-**Only after user approves the query**, run scimesh to count results:
+**Use `scimesh search` freely for calibration - it has NO side effects:**
 
 ```bash
 uvx scimesh search "QUERY" -p openalex -n 10 -f json | jq '.papers | length'
 ```
+
+`scimesh search` is READ-ONLY (as long as you don't provide a custom `-o`):
+- Does NOT create any files or directories
+- Does NOT modify the vault
+- Can be run multiple times to refine the query
+- Use it to test different query variations before committing
 
 Then ask:
 
@@ -164,6 +170,13 @@ Then ask:
 - If user enables Sci-Hub, add `--scihub` flag to vault search command
 
 ## Step 6: Execute Search
+
+**CRITICAL: `scimesh vault search` creates vault structure and downloads papers.**
+
+Before executing, you MUST:
+1. Show the COMPLETE query to the user (in Scala code block)
+2. Get EXPLICIT confirmation to proceed
+3. Never execute `vault search` without user seeing the full query first
 
 After final confirmation, use the vault search command:
 

@@ -69,7 +69,93 @@ Use AskUserQuestion to gather protocol info. **All questions need 2-4 options.**
 }
 ```
 
-**Question 4: Target pool size**
+**Question 4: Preprints**
+```python
+{
+    "question": "How to handle preprints (arXiv, bioRxiv, etc)?",
+    "header": "Preprints",
+    "options": [
+        {"label": "Include preprints (Recommended)", "description": "Accept preprints as valid sources"},
+        {"label": "Only if no published version", "description": "Prefer published, fallback to preprint"},
+        {"label": "Exclude preprints", "description": "Only peer-reviewed publications"}
+    ],
+    "multiSelect": False
+}
+```
+
+**Question 5: Study design**
+```python
+{
+    "question": "What study designs to include?",
+    "header": "Study type",
+    "options": [
+        {"label": "Primary research only (Recommended)", "description": "Original experiments/studies"},
+        {"label": "Include systematic reviews", "description": "Primary + systematic reviews/meta-analyses"},
+        {"label": "Include all reviews", "description": "Primary + any type of review"},
+        {"label": "Reviews only", "description": "Only review papers, no primary research"}
+    ],
+    "multiSelect": False
+}
+```
+
+**Question 6: Minimum citations**
+```python
+{
+    "question": "Set a minimum citation threshold?",
+    "header": "Citations",
+    "options": [
+        {"label": "No minimum (Recommended)", "description": "Include all papers regardless of citations"},
+        {"label": "At least 5 citations", "description": "Filter out very low-impact papers"},
+        {"label": "At least 10 citations", "description": "Moderate impact threshold"},
+        {"label": "At least 50 citations", "description": "High impact only"}
+    ],
+    "multiSelect": False
+}
+```
+
+**Question 7: Data/Code availability**
+```python
+{
+    "question": "Require open data or code?",
+    "header": "Open science",
+    "options": [
+        {"label": "No requirement (Recommended)", "description": "Include all papers"},
+        {"label": "Prefer open data/code", "description": "Prioritize but don't exclude"},
+        {"label": "Must have open data", "description": "Exclude papers without available data"},
+        {"label": "Must have open code", "description": "Exclude papers without available code"}
+    ],
+    "multiSelect": False
+}
+```
+
+**Question 8-9: Search providers (2 questions, same header)**
+```python
+{
+    "questions": [
+        {
+            "question": "Which providers to search?",
+            "header": "Providers",
+            "options": [
+                {"label": "arXiv", "description": "Preprints in CS, Physics, Math. Free full-text PDFs."},
+                {"label": "OpenAlex", "description": "200M+ works, open metadata, citation counts."},
+                {"label": "Semantic Scholar", "description": "AI/ML focus, citation graph, abstracts."}
+            ],
+            "multiSelect": True
+        },
+        {
+            "question": "Which providers to search?",
+            "header": "Providers",
+            "options": [
+                {"label": "CrossRef", "description": "DOI metadata, broad coverage across all fields."},
+                {"label": "Scopus", "description": "Requires SCOPUS_API_KEY environment variable."}
+            ],
+            "multiSelect": True
+        }
+    ]
+}
+```
+
+**Question 10: Target pool size**
 ```python
 {
     "question": "How many papers do you want to screen?",
@@ -83,7 +169,7 @@ Use AskUserQuestion to gather protocol info. **All questions need 2-4 options.**
 }
 ```
 
-**Question 5: Research question (free text)**
+**Question 11: Research question (free text)**
 ```python
 {
     "question": "Describe your research question:",
