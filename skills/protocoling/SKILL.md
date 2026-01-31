@@ -231,7 +231,7 @@ These questions apply to ALL frameworks:
             "question": "Which providers to search?",
             "header": "Providers",
             "options": [
-                {"label": "CrossRef", "description": "DOI metadata, broad coverage across all fields."},
+                {"label": "arXiv", "description": "Preprints, especially for CS/ML/Physics."},
                 {"label": "Scopus", "description": "Requires SCOPUS_API_KEY environment variable."}
             ],
             "multiSelect": True

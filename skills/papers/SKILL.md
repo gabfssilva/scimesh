@@ -1,7 +1,7 @@
 ---
 name: papers
 description: |
-  Search scientific papers on arXiv, OpenAlex, Scopus, Semantic Scholar and CrossRef. Use when the user wants to search, explore or save academic papers.
+  Search scientific papers on arXiv, OpenAlex, Scopus and Semantic Scholar. Use when the user wants to search, explore or save academic papers.
 
   USE THIS SKILL FOR ALL:
   - Search scientific papers, academic articles, recent research
@@ -11,7 +11,7 @@ description: |
   - Discover new papers on specific topics
   - Search specific paper by DOI
 
-  TRIGGERS: papers, paper, artigo, artigos, pesquisa, literatura, arxiv, openalex, scopus, semantic scholar, crossref, buscar paper, papers sobre, quero ler sobre, o que tem de novo em, salva esse paper, papers recentes, citacoes, quem cita, referencias, search papers, find papers, academic search, literature review, citations, references, save paper, recent papers, what's new in
+  TRIGGERS: papers, paper, artigo, artigos, pesquisa, literatura, arxiv, openalex, scopus, semantic scholar, buscar paper, papers sobre, quero ler sobre, o que tem de novo em, salva esse paper, papers recentes, citacoes, quem cita, referencias, search papers, find papers, academic search, literature review, citations, references, save paper, recent papers, what's new in
 ---
 
 # Papers Search Skill
@@ -34,7 +34,6 @@ Search scientific papers using `scimesh` via `uvx` (no global installation requi
 | OpenAlex | No | 61M+ papers, largest open DB | Y | Y | Y |
 | Scopus | `SCOPUS_API_KEY` | Requires institutional access | Y | Y | Y (in) |
 | Semantic Scholar | Optional | 200M+ papers, citation graph | Y | Y | Y |
-| CrossRef | No | DOI metadata, references | Y | Y | N |
 
 ## Basic Usage
 
@@ -292,7 +291,7 @@ When the user asks to save a paper:
 uvx scimesh get "10.1038/nature14539"
 
 # From specific providers
-uvx scimesh get "10.1038/nature14539" -p openalex,crossref
+uvx scimesh get "10.1038/nature14539" -p openalex,semantic_scholar
 
 # Export to BibTeX
 uvx scimesh get "10.1038/nature14539" -f bibtex -o paper.bib
@@ -358,7 +357,7 @@ uvx scimesh search "TITLE(transformer)" -n 20
 # Limit total results
 uvx scimesh search "TITLE(transformer)" -t 50
 
-# Choose providers (arxiv, openalex, scopus, semantic_scholar, crossref)
+# Choose providers (arxiv, openalex, scopus, semantic_scholar)
 uvx scimesh search "TITLE(transformer)" -p arxiv,openalex,semantic_scholar
 
 # Export to BibTeX
@@ -382,7 +381,7 @@ uvx scimesh search "TITLE(transformer)" --no-dedupe
 
 ### Local Indexing for Fulltext
 
-For fulltext search on providers without native support (Semantic Scholar, CrossRef):
+For fulltext search on providers without native support (Semantic Scholar):
 
 ```bash
 # Index local PDFs

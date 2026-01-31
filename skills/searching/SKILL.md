@@ -214,7 +214,7 @@ Add more papers to existing vault with additional queries:
 
 ```bash
 uvx scimesh vault search {review_path}/ "NEW QUERY" \
-    -p crossref \
+    -p openalex \
     -n 50
 ```
 
@@ -225,7 +225,6 @@ uvx scimesh vault search {review_path}/ "NEW QUERY" \
 | arxiv | Preprints, CS/Physics/Math, free full-text |
 | openalex | 200M+ works, open metadata, citations |
 | semantic_scholar | AI/ML focus, citation graph, abstracts |
-| crossref | DOI metadata, broad coverage |
 | scopus | Comprehensive but requires API key |
 
 ## Next Step

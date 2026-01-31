@@ -98,7 +98,7 @@ def test_provider_translation_consistency():
 
 def test_all_providers_have_pagination_support():
     """Verify all providers have pagination attributes."""
-    from scimesh.providers import Arxiv, CrossRef, OpenAlex, Scopus, SemanticScholar
+    from scimesh.providers import Arxiv, OpenAlex, Scopus, SemanticScholar
 
     # arXiv: offset-based with rate limiting
     assert hasattr(Arxiv, "PAGE_SIZE")
@@ -111,10 +111,6 @@ def test_all_providers_have_pagination_support():
     # Scopus: cursor-based
     assert hasattr(Scopus, "PAGE_SIZE")
     assert Scopus.PAGE_SIZE == 25
-
-    # CrossRef: cursor-based
-    assert hasattr(CrossRef, "PAGE_SIZE")
-    assert CrossRef.PAGE_SIZE == 1000
 
     # Semantic Scholar: offset-based with limit
     assert hasattr(SemanticScholar, "PAGE_SIZE")

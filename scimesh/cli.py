@@ -16,7 +16,7 @@ from scimesh.download import download_papers
 from scimesh.export import get_exporter
 from scimesh.export.tree import TreeExporter
 from scimesh.models import Paper, SearchResult, merge_papers
-from scimesh.providers import Arxiv, CrossRef, OpenAlex, Scopus, SemanticScholar
+from scimesh.providers import Arxiv, OpenAlex, Scopus, SemanticScholar
 from scimesh.providers.base import Provider
 from scimesh.vault.cli import vault_app
 
@@ -47,7 +47,6 @@ PROVIDERS = {
     "openalex": OpenAlex,
     "scopus": Scopus,
     "semantic_scholar": SemanticScholar,
-    "crossref": CrossRef,
 }
 
 # Providers that support the get() method
@@ -56,7 +55,6 @@ GET_PROVIDERS = {
     "openalex": OpenAlex,
     "scopus": Scopus,
     "semantic_scholar": SemanticScholar,
-    "crossref": CrossRef,
 }
 
 # Providers that support the citations() method
@@ -170,7 +168,7 @@ def search(
         list[str],
         cyclopts.Parameter(
             name=["--provider", "-p"],
-            help="Providers to search (arxiv, openalex, scopus, semantic_scholar, crossref)",
+            help="Providers to search (arxiv, openalex, scopus, semantic_scholar)",
         ),
     ] = ["openalex"],
     output: Annotated[
@@ -257,7 +255,7 @@ def search(
     downloader = _create_downloader(host_concurrency, scihub) if local_fulltext_indexing else None
 
     for p in providers:
-        if downloader and p in ("crossref", "semantic_scholar"):
+        if downloader and p == "semantic_scholar":
             provider_instances.append(PROVIDERS[p](downloader=downloader))
         else:
             provider_instances.append(PROVIDERS[p]())
@@ -528,7 +526,7 @@ def get(
         list[str],
         cyclopts.Parameter(
             name=["--provider", "-p"],
-            help="Providers to query (openalex, semantic_scholar, crossref, arxiv, scopus)",
+            help="Providers to query (openalex, semantic_scholar, arxiv, scopus)",
         ),
     ] = ["openalex", "semantic_scholar"],
     output: Annotated[

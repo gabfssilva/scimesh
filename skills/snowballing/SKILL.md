@@ -54,7 +54,6 @@ uvx scimesh vault snowball {review_path}/ "DOI" \
 | openalex | Yes | Yes |
 | semantic_scholar | Yes | Yes |
 | scopus | Yes (in only) | No |
-| crossref | No | No |
 | arxiv | No | No |
 
 ## Workflow

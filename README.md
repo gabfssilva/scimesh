@@ -7,11 +7,11 @@
 
 A Python library for systematic literature search across multiple academic databases.
 
-Search arXiv, OpenAlex, Scopus, Semantic Scholar, and CrossRef with a unified API. Export to BibTeX, RIS, CSV, JSON, or Vault. Download PDFs via Open Access (Unpaywall). Index and search full-text content locally.
+Search arXiv, OpenAlex, Scopus, and Semantic Scholar with a unified API. Export to BibTeX, RIS, CSV, JSON, or Vault. Download PDFs via Open Access (Unpaywall). Index and search full-text content locally.
 
 ## Features
 
-- **Multi-provider search** - arXiv, OpenAlex, Scopus, Semantic Scholar, CrossRef (parallel queries)
+- **Multi-provider search** - arXiv, OpenAlex, Scopus, Semantic Scholar (parallel queries)
 - **Scopus-style query syntax** - `TITLE(transformers) AND AUTHOR(Vaswani)`
 - **Programmatic query API** - Compose queries with Python operators (`&`, `|`, `~`)
 - **Export formats** - BibTeX, RIS, CSV, JSON, Vault
@@ -58,7 +58,7 @@ pip install scimesh
 scimesh search "TITLE(transformer) AND AUTHOR(Vaswani)"
 
 # Search multiple providers (comma-separated)
-scimesh search "TITLE(BERT)" -p arxiv,openalex,crossref
+scimesh search "TITLE(BERT)" -p arxiv,openalex,semantic_scholar
 
 # Export to BibTeX
 scimesh search "TITLE(BERT)" -f bibtex -o papers.bib
@@ -314,13 +314,13 @@ scimesh search <query> [OPTIONS]
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `-p, --provider` | Providers (comma-separated or repeated): arxiv, openalex, scopus, semantic_scholar, crossref | openalex |
+| `-p, --provider` | Providers (comma-separated or repeated): arxiv, openalex, scopus, semantic_scholar | openalex |
 | `-n, --max` | Max total results | 100 |
 | `-f, --format` | Output: tree, csv, json, bibtex, ris, vault | tree |
 | `-o, --output` | Output file path | stdout |
 | `--on-error` | Error handling: fail, warn, ignore | warn |
 | `--no-dedupe` | Disable deduplication | false |
-| `--local-fulltext-indexing` | Auto-download and index PDFs for fulltext (S2/CrossRef) | false |
+| `--local-fulltext-indexing` | Auto-download and index PDFs for fulltext (Semantic Scholar) | false |
 | `--scihub` | Enable Sci-Hub fallback for `--local-fulltext-indexing` downloads | false |
 | `--host-concurrency` | Concurrency limit: `3` (all hosts) or `arxiv.org=2,unpaywall.org=3` (per-host) | 5 |
 | `--log-level` | Log level: debug, info, warning, error | - |
@@ -367,7 +367,7 @@ scimesh get <paper_id> [OPTIONS]
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `-p, --provider` | Providers (comma-separated): openalex, semantic_scholar, crossref, arxiv, scopus | openalex, semantic_scholar |
+| `-p, --provider` | Providers (comma-separated): openalex, semantic_scholar, arxiv, scopus | openalex, semantic_scholar |
 | `-f, --format` | Output: tree, json, bibtex, ris | tree |
 | `-o, --output` | Output file path | stdout |
 | `--merge` | Merge results from multiple providers | true |
@@ -379,7 +379,7 @@ scimesh get <paper_id> [OPTIONS]
 scimesh get "10.1038/nature14539"
 
 # Get from specific providers
-scimesh get "10.1038/nature14539" -p openalex,crossref
+scimesh get "10.1038/nature14539" -p openalex,semantic_scholar
 
 # Export to BibTeX
 scimesh get "10.1038/nature14539" -f bibtex -o paper.bib
@@ -462,17 +462,15 @@ The index is stored at `~/.scimesh/fulltext.db` using SQLite FTS5.
 | OpenAlex | No | 61M+ papers, largest open database |
 | Scopus | `SCOPUS_API_KEY` | Requires institutional access |
 | Semantic Scholar | `SEMANTIC_SCHOLAR_API_KEY` (optional) | 200M+ papers, citation graph |
-| CrossRef | `CROSSREF_API_KEY` (optional) | DOI metadata, references |
 
 ```python
-from scimesh.providers import Arxiv, OpenAlex, Scopus, SemanticScholar, CrossRef
+from scimesh.providers import Arxiv, OpenAlex, Scopus, SemanticScholar
 
 providers = [
     Arxiv(),
     OpenAlex(mailto="you@example.com"),  # Optional, for polite pool
     Scopus(),  # Uses SCOPUS_API_KEY env var
     SemanticScholar(),  # Optional API key for higher rate limits
-    CrossRef(mailto="you@example.com"),  # Optional, for polite pool
 ]
 ```
 
@@ -484,7 +482,6 @@ providers = [
 | OpenAlex | Yes | Yes | Yes (in/out) | Native |
 | Scopus | Yes | Yes | Yes (in only) | Client-side |
 | Semantic Scholar | Yes | Yes | Yes (in/out) | Native (min) / Client-side (max) |
-| CrossRef | Yes | Yes | No | Client-side |
 
 *arXiv does not provide citation counts, so citation filters return no results.
 
@@ -638,30 +635,29 @@ if cache.has_pdf("10.1038/nature14539"):
 Index PDFs locally and search their content using SQLite FTS5. The `ALL(...)` operator works transparently across all providers:
 
 - **arXiv, Scopus, OpenAlex**: Use native fulltext search APIs
-- **Semantic Scholar, CrossRef**: Search API with local FTS5 filter
+- **Semantic Scholar**: Search API with local FTS5 filter
 
-**Important**: For providers without native fulltext support (Semantic Scholar, CrossRef), you must provide additional filters (title, author, etc.) along with `ALL()`. The search uses API results filtered by your local index.
+**Important**: For providers without native fulltext support (Semantic Scholar), you must provide additional filters (title, author, etc.) along with `ALL()`. The search uses API results filtered by your local index.
 
 ```bash
-# Index PDFs first (needed for S2/CrossRef fulltext)
+# Index PDFs first (needed for S2 fulltext)
 scimesh index ./papers/
 
 # arXiv/Scopus/OpenAlex: native fulltext (no additional filters needed)
 scimesh search "ALL(attention mechanism)" -p arxiv
 scimesh search "ALL(attention mechanism)" -p openalex
 
-# Semantic Scholar/CrossRef: requires additional filter + local index
-scimesh search "ALL(CRISPR) AND AUTHOR(Doudna)" -p crossref
+# Semantic Scholar: requires additional filter + local index
 scimesh search "ALL(transformer) AND TITLE(bert)" -p semantic_scholar
 ```
 
 **Auto-download with `--local-fulltext-indexing`:**
 
-For Semantic Scholar and CrossRef, you can enable automatic PDF download during fulltext searches. Papers not in the local index will be downloaded (via Open Access), text extracted, and indexed on-the-fly:
+For Semantic Scholar, you can enable automatic PDF download during fulltext searches. Papers not in the local index will be downloaded (via Open Access), text extracted, and indexed on-the-fly:
 
 ```bash
 # Downloads and indexes PDFs automatically (slower, but works without pre-indexing)
-scimesh search "ALL(CRISPR) AND TITLE(gene)" -p crossref --local-fulltext-indexing
+scimesh search "ALL(CRISPR) AND TITLE(gene)" -p semantic_scholar --local-fulltext-indexing
 ```
 
 This is useful when you don't have papers pre-indexed locally. Requires `UNPAYWALL_EMAIL` env var.
@@ -698,11 +694,11 @@ papers = index.list_papers()
 **Auto-download (Python API):**
 
 ```python
-from scimesh.providers import CrossRef, SemanticScholar
+from scimesh.providers import SemanticScholar
 from scimesh.query import fulltext, title
 
 # Enable auto_download for automatic PDF download and indexing
-async with CrossRef(auto_download=True) as provider:
+async with SemanticScholar(auto_download=True) as provider:
     query = fulltext("CRISPR") & title("gene editing")
     async for paper in provider.search(query):
         print(paper.title)

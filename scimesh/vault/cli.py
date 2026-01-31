@@ -745,14 +745,13 @@ def vault_search(
     from scimesh import take
     from scimesh.export.vault import VaultExporter
     from scimesh.models import Paper
-    from scimesh.providers import Arxiv, CrossRef, OpenAlex, Scopus, SemanticScholar
+    from scimesh.providers import Arxiv, OpenAlex, Scopus, SemanticScholar
 
     PROVIDERS = {
         "arxiv": Arxiv,
         "openalex": OpenAlex,
         "scopus": Scopus,
         "semantic_scholar": SemanticScholar,
-        "crossref": CrossRef,
     }
 
     # Validate providers
