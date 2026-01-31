@@ -1,0 +1,24 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "scimesh",
+  "description": "Scientific research tools for systematic literature reviews, paper searching, and academic workflow management",
+  "owner": {
+    "name": "Gabriel Francisco",
+    "email": "gabfssilva@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "scimesh",
+      "description": "Systematic literature review skills for scientific research using scimesh. Includes paper searching, screening workflows, PRISMA flowcharts, and evidence extraction.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Gabriel Francisco",
+        "email": "gabfssilva@gmail.com"
+      },
+      "source": ".",
+      "category": "research",
+      "homepage": "https://github.com/gabfssilva/scimesh",
+      "keywords": ["slr", "literature-review", "prisma", "papers", "research", "scimesh"]
+    }
+  ]
+}
