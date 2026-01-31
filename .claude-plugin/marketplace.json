@@ -10,7 +10,7 @@
     {
       "name": "scimesh",
       "description": "Systematic literature review skills for scientific research using scimesh. Includes paper searching, screening workflows, PRISMA flowcharts, and evidence extraction.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": {
         "name": "Gabriel Francisco",
         "email": "gabfssilva@gmail.com"
@@ -18,7 +18,13 @@
       "source": "./plugins/scimesh",
       "category": "research",
       "homepage": "https://github.com/gabfssilva/scimesh",
-      "keywords": ["slr", "literature-review", "prisma", "papers", "research", "scimesh"]
+      "keywords": ["slr", "literature-review", "prisma", "papers", "research", "scimesh"],
+      "agents": [
+        "./agents/problem-extractor.md",
+        "./agents/method-extractor.md",
+        "./agents/result-extractor.md",
+        "./agents/paper-synthesizer.md"
+      ]
     }
   ]
 }
