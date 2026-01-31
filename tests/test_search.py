@@ -2,10 +2,11 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import streamish as st
 
 from scimesh.models import Author, Paper
 from scimesh.query.combinators import title
-from scimesh.search import search, take
+from scimesh.search import search
 
 
 @pytest.fixture
@@ -197,7 +198,7 @@ async def test_take_limits_items():
             yield i
             i += 1
 
-    items = [x async for x in take(5, infinite())]
+    items = [x async for x in st.take(5, infinite())]
     assert items == [0, 1, 2, 3, 4]
 
 
@@ -209,7 +210,7 @@ async def test_take_with_fewer_items():
         for i in range(3):
             yield i
 
-    items = [x async for x in take(10, finite())]
+    items = [x async for x in st.take(10, finite())]
     assert items == [0, 1, 2]
 
 
@@ -221,5 +222,5 @@ async def test_take_zero():
         yield 1
         yield 2
 
-    items = [x async for x in take(0, some_items())]
+    items = [x async for x in st.take(0, some_items())]
     assert items == []

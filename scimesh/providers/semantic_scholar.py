@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlencode
 
 import httpx
+import streamish as st
 
 from scimesh.models import Author, Paper
 from scimesh.providers._fulltext_fallback import FulltextFallbackMixin
@@ -200,7 +201,6 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
         if self._client is None:
             raise RuntimeError("Provider not initialized. Use 'async with provider:'")
 
-        # Extract citation filter for native support + client-side max
         citation_filter = extract_citation_range(query)
         query_without_citations = remove_citation_range(query)
 
@@ -210,72 +210,69 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
 
         query_str, year_start, year_end = self._translate_query(query_without_citations)
         logger.debug("Translated query: %s", query_str)
-        logger.debug("Year range: %s - %s", year_start, year_end)
 
         if not query_str:
             logger.debug("Empty query, returning no results")
             return
 
-        params: dict[str, str | int] = {
-            "query": query_str,
-            "limit": self.PAGE_SIZE,
-            "fields": API_FIELDS,
-        }
-
-        # Add citation filter (Semantic Scholar supports minCitationCount natively)
-        if citation_filter and citation_filter.min is not None:
-            params["minCitationCount"] = citation_filter.min
-
-        # Add year filter if specified
-        if year_start:
-            params["year"] = f"{year_start}-" if not year_end else f"{year_start}-{year_end}"
-        elif year_end:
-            params["year"] = f"-{year_end}"
-
         headers: dict[str, str] = {}
         if self._api_key:
             headers["x-api-key"] = self._api_key
 
-        # Pagination loop using offset
-        offset = 0
+        async def fetch_pages() -> AsyncIterator[dict]:
+            params: dict[str, str | int] = {
+                "query": query_str,
+                "limit": self.PAGE_SIZE,
+                "fields": API_FIELDS,
+            }
+            if citation_filter and citation_filter.min is not None:
+                params["minCitationCount"] = citation_filter.min
+            if year_start:
+                params["year"] = f"{year_start}-" if not year_end else f"{year_start}-{year_end}"
+            elif year_end:
+                params["year"] = f"-{year_end}"
 
-        while offset < self.MAX_TOTAL_RESULTS:
-            params["offset"] = offset
-            url = f"{self.BASE_URL}?{urlencode(params)}"
-            logger.debug("Requesting: %s", url)
+            offset = 0
+            while offset < self.MAX_TOTAL_RESULTS:
+                params["offset"] = offset
+                url = f"{self.BASE_URL}?{urlencode(params)}"
+                logger.debug("Requesting: %s", url)
 
-            response = await self._fetch_with_retry(url, headers)
-            if response is None:
-                return
+                response = await self._fetch_with_retry(url, headers)
+                if response is None:
+                    return
 
-            logger.debug("Response status: %s", response.status_code)
+                data = response.json()
+                yield data
 
-            data = response.json()
-            total = data.get("total", 0)
-            results = data.get("data", [])
-            logger.debug("Results count: %s, total: %s, offset: %s", len(results), total, offset)
+                total = data.get("total", 0)
+                results = data.get("data", [])
+                offset += self.PAGE_SIZE
 
-            for paper_data in results:
-                paper = self._parse_paper(paper_data)
-                if paper:
-                    # Apply client-side filter for max citations (API doesn't support it)
-                    if (
-                        citation_filter
-                        and citation_filter.max is not None
-                        and (
-                            paper.citations_count is None
-                            or paper.citations_count > citation_filter.max
-                        )
-                    ):
-                        continue
-                    yield paper
+                if (
+                    offset >= self.MAX_TOTAL_RESULTS
+                    or offset >= total
+                    or len(results) < self.PAGE_SIZE
+                ):
+                    break
 
-            # Check pagination termination conditions
-            offset += self.PAGE_SIZE
+        def passes_max_citations(paper: Paper) -> bool:
+            if citation_filter and citation_filter.max is not None:
+                return (
+                    paper.citations_count is not None
+                    and paper.citations_count <= citation_filter.max
+                )
+            return True
 
-            # Stop if: we've reached max results, exceeded total, or got a partial page
-            if offset >= self.MAX_TOTAL_RESULTS or offset >= total or len(results) < self.PAGE_SIZE:
-                break
+        stream = (
+            st.stream(fetch_pages())
+            .flat_map(lambda data: data.get("data", []))
+            .map(self._parse_paper)
+            .filter(lambda p: p is not None and passes_max_citations(p))
+        )
+        async for paper in stream:
+            if paper is not None:
+                yield paper
 
     def _parse_paper(self, paper_data: dict) -> Paper | None:
         """Parse a Semantic Scholar paper response into a Paper."""

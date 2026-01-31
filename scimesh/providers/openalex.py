@@ -5,6 +5,8 @@ from datetime import date
 from typing import Literal
 from urllib.parse import urlencode
 
+import streamish as st
+
 from scimesh.models import Author, Paper
 from scimesh.providers.base import Provider
 from scimesh.query.combinators import And, CitationRange, Field, Not, Or, Query, YearRange
@@ -297,46 +299,41 @@ class OpenAlex(Provider):
         if self._client is None:
             raise RuntimeError("Provider not initialized")
 
-        cursor: str | None = "*"  # Initial cursor to start pagination
+        client = self._client  # Capture for closure
 
-        while cursor is not None:
-            params: dict[str, str | int] = {
-                "per_page": 200,  # OpenAlex max is 200
-                "cursor": cursor,
-            }
+        async def fetch_pages() -> AsyncIterator[dict]:
+            cursor: str | None = "*"
+            while cursor is not None:
+                params: dict[str, str | int] = {
+                    "per_page": 200,
+                    "cursor": cursor,
+                }
+                if self._mailto:
+                    params["mailto"] = self._mailto
+                if search_terms:
+                    params["search"] = search_terms
+                if filter_str:
+                    params["filter"] = filter_str
 
-            if self._mailto:
-                params["mailto"] = self._mailto
+                url = f"{self.BASE_URL}?{urlencode(params)}"
+                logger.debug("Requesting: %s", url)
+                response = await client.get(url)
+                response.raise_for_status()
+                logger.debug("Response status: %s", response.status_code)
 
-            if search_terms:
-                params["search"] = search_terms
-            if filter_str:
-                params["filter"] = filter_str
+                data = response.json()
+                yield data
+                cursor = data.get("meta", {}).get("next_cursor")
 
-            url = f"{self.BASE_URL}?{urlencode(params)}"
-            logger.debug("Requesting: %s", url)
-            response = await self._client.get(url)
-            response.raise_for_status()
-            logger.debug("Response status: %s", response.status_code)
-
-            data = response.json()
-            results = data.get("results", [])
-            meta = data.get("meta", {})
-
-            logger.debug(
-                "Results count: %s, total: %s, next_cursor: %s",
-                len(results),
-                meta.get("count"),
-                meta.get("next_cursor"),
-            )
-
-            for work in results:
-                paper = self._parse_work(work)
-                if paper:
-                    yield paper
-
-            # Get next cursor for pagination
-            cursor = meta.get("next_cursor")
+        stream = (
+            st.stream(fetch_pages())
+            .flat_map(lambda data: data.get("results", []))
+            .map(self._parse_work)
+            .filter(lambda p: p is not None)
+        )
+        async for paper in stream:
+            if paper is not None:
+                yield paper
 
     async def _search_split(
         self,

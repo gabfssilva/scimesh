@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
+import streamish as st
 
 from scimesh.cache import PaperCache
 from scimesh.download.base import Downloader
@@ -59,46 +60,36 @@ async def download_papers(
     downloaders: list[Downloader] | None = None,
     cache: PaperCache | None = None,
     use_cache: bool = True,
+    max_concurrency: int = 5,
 ) -> AsyncIterator[DownloadResult]:
     """Download papers for a list of DOIs.
 
     Tries each downloader in order until one succeeds. Saves PDFs to the
     output directory with sanitized filenames based on DOIs.
 
-    If caching is enabled, checks the cache before downloading and saves
-    successfully downloaded PDFs to the cache.
-
     Args:
         dois: An iterable of DOIs to download.
         output_dir: Directory to save downloaded PDFs.
         downloaders: Optional list of Downloader instances to use.
-            Defaults to [OpenAccessDownloader(), SciHubDownloader()].
-        cache: Optional PaperCache instance. If None and use_cache is True,
-            a default cache is created.
+        cache: Optional PaperCache instance.
         use_cache: Whether to use caching. Defaults to True.
+        max_concurrency: Maximum number of concurrent downloads.
 
     Yields:
-        DownloadResult for each DOI, indicating success or failure.
-
-    Example:
-        async for result in download_papers(["10.1234/paper"], Path("./pdfs")):
-            if result.success:
-                print(f"Downloaded: {result.filename}")
-            else:
-                print(f"Failed: {result.error}")
+        DownloadResult for each DOI.
     """
     if downloaders is None:
         downloaders = [OpenAccessDownloader()]
 
-    # Initialize cache if caching is enabled
     if use_cache and cache is None:
         cache = PaperCache()
 
-    # Ensure output directory exists
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    for doi in dois:
-        result = await _download_single(doi, output_dir, downloaders, cache if use_cache else None)
+    async def download_one(doi: str) -> DownloadResult:
+        return await _download_single(doi, output_dir, downloaders, cache if use_cache else None)
+
+    async for result in st.map_async(download_one, dois, concurrency=max_concurrency):
         yield result
 
 

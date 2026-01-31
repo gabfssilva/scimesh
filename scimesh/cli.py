@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
 import cyclopts
+import streamish as st
 
 from scimesh import search as do_search
-from scimesh import take
 from scimesh.download import download_papers
 from scimesh.export import get_exporter
 from scimesh.export.tree import TreeExporter
@@ -150,7 +150,7 @@ async def _stream_search(
         stream=True,
     )
     if max_results is not None:
-        stream = take(max_results, stream)
+        stream = st.take(max_results, stream)
 
     async for paper in stream:
         if count > 0:
@@ -292,7 +292,7 @@ def search(
                 stream=True,
             )
             if max_results is not None:
-                stream = take(max_results, stream)
+                stream = st.take(max_results, stream)
 
             papers: list[Paper] = []
             async for paper in stream:
@@ -333,7 +333,7 @@ def search(
             stream=True,
         )
         if max_results is not None:
-            stream = take(max_results, stream)
+            stream = st.take(max_results, stream)
 
         papers: list[Paper] = []
         totals: dict[str, int] = {}

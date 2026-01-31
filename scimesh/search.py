@@ -1,10 +1,10 @@
 # scimesh/search.py
-import asyncio
 import logging
 import warnings
-from collections import OrderedDict
 from collections.abc import AsyncIterator, Coroutine
 from typing import Any, Literal, overload
+
+import streamish as st
 
 from scimesh.models import Paper, SearchResult
 from scimesh.providers.base import Provider
@@ -18,66 +18,6 @@ OnError = Literal["fail", "ignore", "warn"]
 DEFAULT_DEDUPE_WINDOW = 10_000
 
 
-async def take[T](n: int, aiter: AsyncIterator[T]) -> AsyncIterator[T]:
-    """Take at most n items from an async iterator."""
-    count = 0
-    async for item in aiter:
-        if count >= n:
-            break
-        yield item
-        count += 1
-
-
-async def chunked[T](
-    stream: AsyncIterator[T],
-    size: int,
-    timeout: float = 1.0,
-) -> AsyncIterator[list[T]]:
-    """Group items from async stream into chunks.
-
-    Args:
-        stream: Source async iterator
-        size: Max items per chunk
-        timeout: Max seconds to wait before yielding partial chunk
-
-    Yields:
-        Lists of up to `size` items
-    """
-    buffer: list[T] = []
-    aclose = getattr(stream, "aclose", None)
-
-    async def get_next() -> T:
-        """Wrapper to make __anext__ a proper coroutine for create_task."""
-        return await stream.__anext__()
-
-    try:
-        while True:
-            try:
-                item = await asyncio.wait_for(get_next(), timeout=timeout)
-                buffer.append(item)
-                if len(buffer) >= size:
-                    yield buffer
-                    buffer = []
-            except TimeoutError:
-                # Yield partial buffer on timeout
-                if buffer:
-                    yield buffer
-                    buffer = []
-            except StopAsyncIteration:
-                break
-
-        # Yield remaining buffer after normal completion
-        if buffer:
-            yield buffer
-    finally:
-        # Close the source stream
-        if aclose:
-            try:
-                await aclose()
-            except Exception:
-                pass
-
-
 async def _search_stream(
     query: Query,
     providers: list[Provider],
@@ -87,47 +27,31 @@ async def _search_stream(
 ) -> AsyncIterator[Paper]:
     """Stream papers from multiple providers with optional windowed deduplication."""
     logger.info("Starting search with %s providers", len(providers))
-    queue: asyncio.Queue[Paper | None | Exception] = asyncio.Queue()
-    active_tasks = len(providers)
-    seen: OrderedDict[str, None] = OrderedDict()
 
-    async def fetch_one(provider: Provider) -> None:
-        nonlocal active_tasks
+    async def safe_search(provider: Provider) -> AsyncIterator[Paper]:
+        """Wrap provider search with error handling."""
         try:
             async with provider:
                 async for paper in provider.search(query):
-                    await queue.put(paper)
+                    yield paper
         except Exception as e:
             if on_error == "fail":
-                await queue.put(e)
+                raise
             elif on_error == "warn":
-                warnings.warn(f"Provider {provider.name} failed: {e}", stacklevel=2)
-        finally:
-            active_tasks -= 1
-            if active_tasks == 0:
-                await queue.put(None)  # Signal completion
+                warnings.warn(f"Provider {provider.name} failed: {e}", stacklevel=3)
+            # on_error == "ignore": silently return empty stream
 
-    # Start all provider tasks
-    for provider in providers:
-        asyncio.create_task(fetch_one(provider))
+    def dedupe_key(paper: Paper) -> str:
+        return paper.doi or f"{paper.title.lower()}:{paper.year}"
 
-    # Yield papers as they arrive
-    while True:
-        item = await queue.get()
-        if item is None:
-            break
-        if isinstance(item, Exception):
-            raise item
+    streams = [safe_search(p) for p in providers]
+    merged = st.merge(*streams)
 
-        if dedupe:
-            key = item.doi or f"{item.title.lower()}:{item.year}"
-            if key in seen:
-                continue
-            seen[key] = None
-            if len(seen) > dedupe_window:
-                seen.popitem(last=False)  # remove oldest
+    if dedupe:
+        merged = st.distinct_by(dedupe_key, merged, window=dedupe_window)
 
-        yield item
+    async for paper in merged:
+        yield paper
 
 
 async def _collect_results(stream: AsyncIterator[Paper]) -> SearchResult:

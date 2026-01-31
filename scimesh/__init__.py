@@ -25,7 +25,7 @@ from scimesh.query import (
     title,
     year,
 )
-from scimesh.search import OnError, search, take
+from scimesh.search import OnError, search
 
 __all__ = [
     # Exceptions
@@ -55,6 +55,5 @@ __all__ = [
     "SearchResult",
     # Search
     "search",
-    "take",
     "OnError",
 ]

@@ -741,8 +741,9 @@ def vault_search(
     print()
 
     # Import search functionality
+    import streamish as st
+
     from scimesh import search as do_search
-    from scimesh import take
     from scimesh.export.vault import VaultExporter
     from scimesh.models import Paper
     from scimesh.providers import Arxiv, OpenAlex, Scopus, SemanticScholar
@@ -775,7 +776,7 @@ def vault_search(
             stream=True,
         )
         if max_results is not None:
-            stream = take(max_results, stream)
+            stream = st.take(max_results, stream)
 
         found_papers: list[Paper] = []
         async for paper in stream:

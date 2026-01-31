@@ -11,6 +11,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from urllib.parse import urlencode
 
+import streamish as st
+
 from scimesh.models import Author, Paper
 from scimesh.providers.base import Provider
 from scimesh.query.combinators import (
@@ -96,7 +98,6 @@ class Arxiv(Provider):
         if self._client is None:
             raise RuntimeError("Provider not initialized. Use 'async with provider:'")
 
-        # Extract citation filter - arXiv has no citation data natively
         citation_filter = extract_citation_range(query)
         query_without_citations = remove_citation_range(query)
 
@@ -107,28 +108,28 @@ class Arxiv(Provider):
             return
 
         if citation_filter is None:
-            # No citation filter: normal search
             async for paper in self._search_raw(query_without_citations):
                 yield paper
         else:
-            # With citation filter: enrich via OpenAlex
             logger.info("Enriching arXiv results with citation data from OpenAlex")
             from scimesh.providers.openalex import OpenAlex
-            from scimesh.search import chunked
 
             async with OpenAlex() as openalex:
-                raw_stream = self._search_raw(query_without_citations)
-                async for batch in chunked(raw_stream, self.ENRICHMENT_BATCH_SIZE, timeout=5.0):
-                    citations = await self._fetch_citations_batch(openalex, batch)
-                    for paper in batch:
-                        enriched = self._with_citations(paper, citations)
-                        if self._passes_citation_filter(enriched, citation_filter):
-                            yield enriched
+                async for paper in (
+                    st.stream(self._search_raw(query_without_citations))
+                    .batch(self.ENRICHMENT_BATCH_SIZE, timeout=5.0)
+                    .map_async(lambda batch: self._enrich_batch(openalex, batch), concurrency=1)
+                    .flat_map(lambda papers: papers)
+                    .filter(lambda p: self._passes_citation_filter(p, citation_filter))
+                ):
+                    yield paper
 
     async def _search_raw(self, query: Query) -> AsyncIterator[Paper]:
         """Raw arXiv search without citation enrichment."""
         if self._client is None:
             raise RuntimeError("Provider not initialized")
+
+        client = self._client  # Capture for closure
 
         query_str = self._translate_query(query)
         logger.debug("Translated query: %s", query_str)
@@ -137,54 +138,58 @@ class Arxiv(Provider):
             return
 
         year_filter = self._extract_year_filter(query)
-        start = 0
-        is_first_request = True
 
-        while True:
-            if start >= self.MAX_RESULTS:
-                logger.debug("Reached arXiv hard limit of %d results", self.MAX_RESULTS)
-                break
+        async def fetch_pages() -> AsyncIterator[list[ET.Element]]:
+            start = 0
+            is_first_request = True
 
-            if not is_first_request:
-                await asyncio.sleep(self.RATE_LIMIT_DELAY)
-            is_first_request = False
+            while start < self.MAX_RESULTS:
+                if not is_first_request:
+                    await asyncio.sleep(self.RATE_LIMIT_DELAY)
+                is_first_request = False
 
-            params = {
-                "search_query": query_str,
-                "start": start,
-                "max_results": self.PAGE_SIZE,
-                "sortBy": "relevance",
-                "sortOrder": "descending",
-            }
+                params = {
+                    "search_query": query_str,
+                    "start": start,
+                    "max_results": self.PAGE_SIZE,
+                    "sortBy": "relevance",
+                    "sortOrder": "descending",
+                }
 
-            url = f"{self.BASE_URL}?{urlencode(params)}"
-            logger.debug("Requesting: %s", url)
-            response = await self._client.get(url)
-            response.raise_for_status()
-            logger.debug("Response status: %s", response.status_code)
+                url = f"{self.BASE_URL}?{urlencode(params)}"
+                logger.debug("Requesting: %s", url)
+                response = await client.get(url)
+                response.raise_for_status()
 
-            root = ET.fromstring(response.text)
+                root = ET.fromstring(response.text)
+                total_results_el = root.find(f"{OPENSEARCH_NS}totalResults")
+                total_results = (
+                    int(total_results_el.text)
+                    if total_results_el is not None and total_results_el.text
+                    else 0
+                )
 
-            total_results_el = root.find(f"{OPENSEARCH_NS}totalResults")
-            total_results = (
-                int(total_results_el.text)
-                if total_results_el is not None and total_results_el.text
-                else 0
-            )
-            logger.debug("Total results: %d, start: %d", total_results, start)
+                entries = root.findall(f"{ATOM_NS}entry")
+                yield entries
 
-            entries = root.findall(f"{ATOM_NS}entry")
-            entries_count = len(entries)
+                start += self.PAGE_SIZE
+                if start >= total_results or len(entries) < self.PAGE_SIZE:
+                    break
 
-            for entry in entries:
-                paper = self._parse_entry(entry)
-                if paper and self._matches_year_filter(paper, year_filter):
-                    yield paper
+        stream = (
+            st.stream(fetch_pages())
+            .flat_map(lambda entries: entries)
+            .map(self._parse_entry)
+            .filter(lambda p: p is not None and self._matches_year_filter(p, year_filter))
+        )
+        async for paper in stream:
+            if paper is not None:
+                yield paper
 
-            start += self.PAGE_SIZE
-
-            if start >= total_results or entries_count < self.PAGE_SIZE:
-                break
+    async def _enrich_batch(self, openalex: OpenAlex, papers: list[Paper]) -> list[Paper]:
+        """Enrich a batch of papers with citation data."""
+        citations = await self._fetch_citations_batch(openalex, papers)
+        return [self._with_citations(p, citations) for p in papers]
 
     async def _fetch_citations_batch(
         self,

@@ -6,6 +6,8 @@ from datetime import date
 from typing import Literal
 from urllib.parse import parse_qs, urlencode, urlparse
 
+import streamish as st
+
 from scimesh.models import Author, Paper
 from scimesh.providers.base import Provider
 from scimesh.query.combinators import (
@@ -81,7 +83,8 @@ class Scopus(Provider):
         if not self._api_key:
             raise ValueError("Scopus requires an API key. Set SCOPUS_API_KEY or pass api_key=")
 
-        # Extract citation filter for client-side filtering
+        client = self._client  # Capture for closure
+
         citation_filter = extract_citation_range(query)
         query_without_citations = remove_citation_range(query)
 
@@ -96,79 +99,61 @@ class Scopus(Provider):
             "Accept": "application/json",
         }
 
-        # Optimize: sort by citedby-count descending when filtering by min citations
-        # This enables early termination when we hit papers below the threshold
         sort_param: str | None = None
         if citation_filter and citation_filter.min is not None:
             sort_param = "-citedby-count"
             logger.debug("Using sort=%s for citation filter optimization", sort_param)
 
-        cursor: str | None = "*"  # Initial cursor to start pagination
+        async def fetch_pages() -> AsyncIterator[list[dict]]:
+            cursor: str | None = "*"
 
-        while cursor is not None:
-            params: dict[str, str | int] = {
-                "query": query_str,
-                "count": self.PAGE_SIZE,
-                "view": "COMPLETE",  # Required to get abstract (dc:description)
-                "cursor": cursor,
-            }
-            if sort_param:
-                params["sort"] = sort_param
+            while cursor is not None:
+                params: dict[str, str | int] = {
+                    "query": query_str,
+                    "count": self.PAGE_SIZE,
+                    "view": "COMPLETE",
+                    "cursor": cursor,
+                }
+                if sort_param:
+                    params["sort"] = sort_param
 
-            url = f"{self.BASE_URL}?{urlencode(params)}"
-            logger.debug("Requesting: %s", url)
-            response = await self._client.get(url, headers=headers)
-            response.raise_for_status()
-            logger.debug("Response status: %s", response.status_code)
+                url = f"{self.BASE_URL}?{urlencode(params)}"
+                logger.debug("Requesting: %s", url)
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
 
-            data = response.json()
-            search_results = data.get("search-results", {})
-            results = search_results.get("entry", [])
-            logger.debug("Results count: %s", len(results))
+                data = response.json()
+                search_results = data.get("search-results", {})
+                results = search_results.get("entry", [])
 
-            stop_pagination = False
-            for entry in results:
-                paper = self._parse_entry(entry)
-                if not paper:
-                    continue
+                yield results
 
-                cit_count = paper.citations_count
-
-                # Early termination: when sorted by -citedby-count and we find
-                # a paper below min, all remaining papers will also be below min
-                if (
-                    citation_filter
-                    and citation_filter.min is not None
-                    and sort_param
-                    and (cit_count is None or cit_count < citation_filter.min)
-                ):
-                    logger.debug(
-                        "Early stop: citations=%s < min=%s",
-                        cit_count,
-                        citation_filter.min,
-                    )
-                    stop_pagination = True
+                cursor = self._extract_next_cursor(search_results)
+                if len(results) < self.PAGE_SIZE:
                     break
 
-                # Filter by max (still need to check each paper)
-                if (
-                    citation_filter
-                    and citation_filter.max is not None
-                    and (cit_count is None or cit_count > citation_filter.max)
+        def passes_citation_filter(paper: Paper) -> bool:
+            cit_count = paper.citations_count
+            if citation_filter:
+                if citation_filter.min is not None and (
+                    cit_count is None or cit_count < citation_filter.min
                 ):
-                    continue
+                    return False
+                if citation_filter.max is not None and (
+                    cit_count is None or cit_count > citation_filter.max
+                ):
+                    return False
+            return True
 
+        stream = (
+            st.stream(fetch_pages())
+            .flat_map(lambda entries: entries)
+            .map(self._parse_entry)
+            .filter(lambda p: p is not None and passes_citation_filter(p))
+        )
+        async for paper in stream:
+            if paper is not None:
                 yield paper
-
-            if stop_pagination:
-                break
-
-            # Get next cursor from response links
-            cursor = self._extract_next_cursor(search_results)
-
-            # Stop if we received a partial page (less than PAGE_SIZE results)
-            if len(results) < self.PAGE_SIZE:
-                break
 
     def _extract_next_cursor(self, search_results: dict) -> str | None:
         """Extract the next cursor from Scopus response links."""
