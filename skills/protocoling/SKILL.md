@@ -142,46 +142,44 @@ These questions apply to ALL frameworks:
 }
 ```
 
-**Question 5: Paper types to exclude**
+**Question 5-7: Study types (3 questions, same header)**
 ```python
 {
-    "question": "What types of papers to EXCLUDE?",
-    "header": "Exclusions",
-    "options": [
-        {"label": "Reviews + abstracts (Recommended)", "description": "Only primary research"},
-        {"label": "Only conference abstracts", "description": "Allow reviews"},
-        {"label": "No exclusions", "description": "Include all types"}
-    ],
-    "multiSelect": False
-}
-```
-
-**Question 6: Preprints**
-```python
-{
-    "question": "How to handle preprints (arXiv, bioRxiv, etc)?",
-    "header": "Preprints",
-    "options": [
-        {"label": "Include preprints (Recommended)", "description": "Accept preprints as valid sources"},
-        {"label": "Only if no published version", "description": "Prefer published, fallback to preprint"},
-        {"label": "Exclude preprints", "description": "Only peer-reviewed publications"}
-    ],
-    "multiSelect": False
-}
-```
-
-**Question 7: Study design**
-```python
-{
-    "question": "What study designs to include?",
-    "header": "Study type",
-    "options": [
-        {"label": "Primary research only (Recommended)", "description": "Original experiments/studies"},
-        {"label": "Include systematic reviews", "description": "Primary + systematic reviews/meta-analyses"},
-        {"label": "Include all reviews", "description": "Primary + any type of review"},
-        {"label": "Reviews only", "description": "Only review papers, no primary research"}
-    ],
-    "multiSelect": False
+    "questions": [
+        {
+            "question": "Which study types to include?",
+            "header": "Study types",
+            "options": [
+                {"label": "Primary research", "description": "Original experiments, empirical studies"},
+                {"label": "Systematic reviews", "description": "Systematic reviews, meta-analyses"},
+                {"label": "Scoping reviews", "description": "Scoping or mapping reviews"},
+                {"label": "Narrative reviews", "description": "Literature reviews, overviews"}
+            ],
+            "multiSelect": True
+        },
+        {
+            "question": "Which study types to include?",
+            "header": "Study types",
+            "options": [
+                {"label": "Conference papers", "description": "Full papers from conferences"},
+                {"label": "Preprints", "description": "arXiv, bioRxiv, medRxiv, SSRN"},
+                {"label": "Theses/dissertations", "description": "PhD, Master's theses"},
+                {"label": "Book chapters", "description": "Chapters from edited volumes"}
+            ],
+            "multiSelect": True
+        },
+        {
+            "question": "Which study types to EXCLUDE?",
+            "header": "Study types",
+            "options": [
+                {"label": "Conference abstracts", "description": "Abstracts without full text"},
+                {"label": "Editorials/letters", "description": "Opinion pieces, letters to editor"},
+                {"label": "Commentaries", "description": "Short commentaries on other papers"},
+                {"label": "Protocols", "description": "Study protocols without results"}
+            ],
+            "multiSelect": True
+        }
+    ]
 }
 ```
 

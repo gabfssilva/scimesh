@@ -23,6 +23,7 @@ Build search queries **collaboratively with the user**. Never search before show
 1. **NO autonomous query building** - Query construction is INTERACTIVE; user approves each component
 2. **Use vault search** - Always use `scimesh vault search` for SLR
 3. **ALWAYS show query in Scala code block** - User must see the FULL query before any search
+4. **READ THE PROTOCOL** - Before building query, read `index.yaml` and extract ALL relevant information for the query (year range, citation thresholds, framework fields, inclusion/exclusion criteria that can be translated to query filters)
 
 ## Query Visibility
 
@@ -53,6 +54,16 @@ TITLE-ABS("imputation" AND "tabular")
 | Citations | `CITEDBY >= 100` | `CITEDBY >= 50` |
 
 **Operators:** `AND`, `OR`, `AND NOT`, `()`
+
+## Step 0: Read Protocol
+
+**BEFORE asking any questions**, read `{vault_path}/index.yaml`:
+
+```bash
+cat {vault_path}/index.yaml
+```
+
+Extract ALL information relevant to the query: year range, citation thresholds, framework fields, and any criteria from inclusion/exclusion that can be translated to query filters.
 
 ## Step 1: Identify Key Concepts
 
