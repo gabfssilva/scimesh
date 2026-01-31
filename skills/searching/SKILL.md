@@ -130,7 +130,40 @@ Then ask:
 }
 ```
 
-## Step 5: Execute Search
+## Step 5: Connectivity Check
+
+**BEFORE executing search, ask about connectivity and Sci-Hub:**
+
+```python
+{
+    "questions": [
+        {
+            "question": "Are you connected to institutional VPN?",
+            "header": "VPN",
+            "options": [
+                {"label": "Yes, VPN active", "description": "Better access + Scopus enabled"},
+                {"label": "No VPN", "description": "Will use Open Access only"},
+                {"label": "Wait, connecting...", "description": "Pause for VPN connection"}
+            ],
+            "multiSelect": False
+        },
+        {
+            "question": "Enable Sci-Hub for PDF downloads?",
+            "header": "Sci-Hub",
+            "options": [
+                {"label": "No (Rec)", "description": "Only legal Open Access sources"},
+                {"label": "Yes", "description": "Use --scihub flag (at your own risk)"}
+            ],
+            "multiSelect": False
+        }
+    ]
+}
+```
+
+- If user chooses "Wait", pause and ask again when ready
+- If user enables Sci-Hub, add `--scihub` flag to vault search command
+
+## Step 6: Execute Search
 
 After final confirmation, use the vault search command:
 

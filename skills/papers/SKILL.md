@@ -66,17 +66,68 @@ uvx scimesh search "attention mechanism"
    - Specific area? (ML / NLP / CV / Run search)
    - Preferred sources? (All / arXiv / OpenAlex / Run search)
    - **IMPORTANT**: Always include "Run search" as an option so the user can skip refinements
-3. **Execute search using Scopus syntax**:
+3. **Connectivity check** (BEFORE executing search):
+   ```python
+   {
+       "questions": [
+           {
+               "question": "Are you connected to institutional VPN?",
+               "header": "VPN",
+               "options": [
+                   {"label": "Yes, VPN active", "description": "Better access to papers"},
+                   {"label": "No VPN", "description": "Will use Open Access only"},
+                   {"label": "Wait, connecting...", "description": "Pause for VPN connection"}
+               ],
+               "multiSelect": False
+           }
+       ]
+   }
+   ```
+   - If user chooses "Wait", pause and ask again when ready
+4. **Execute search using Scopus syntax**:
    ```bash
    uvx scimesh search "TITLE(transformer) AND PUBYEAR > 2020" -p arxiv,openalex -n 20
    ```
-4. **Present results** in a readable format
+5. **Present results** in a readable format
 
 ## Full Paper Reading Flow
 
 When the user wants to read a complete paper (fullpaper):
 
-### 1. Download the PDF
+### 1. Pre-Download Check
+
+**BEFORE downloading, ask about connectivity and Sci-Hub in a single batch:**
+
+```python
+{
+    "questions": [
+        {
+            "question": "Are you connected to institutional VPN?",
+            "header": "VPN",
+            "options": [
+                {"label": "Yes, VPN active", "description": "Institutional access enabled"},
+                {"label": "No VPN", "description": "Will try Open Access only"},
+                {"label": "Wait, connecting...", "description": "Pause for VPN connection"}
+            ],
+            "multiSelect": False
+        },
+        {
+            "question": "Enable Sci-Hub as fallback if Open Access fails?",
+            "header": "Sci-Hub",
+            "options": [
+                {"label": "No (Rec)", "description": "Only legal Open Access sources"},
+                {"label": "Yes", "description": "Use --scihub flag (at your own risk)"}
+            ],
+            "multiSelect": False
+        }
+    ]
+}
+```
+
+- If user chooses "Wait, connecting...", pause and ask again when ready
+- If user enables Sci-Hub, add `--scihub` flag to download commands
+
+### 2. Download the PDF
 
 Use the scimesh `download` command (requires `UNPAYWALL_EMAIL`):
 

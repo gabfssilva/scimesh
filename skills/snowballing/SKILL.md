@@ -76,7 +76,40 @@ After screening, identify 3-5 highly relevant papers to use as seeds:
 }
 ```
 
-### Step 2: Run Snowballing
+### Step 2: Connectivity Check
+
+**BEFORE running snowballing, ask about connectivity and Sci-Hub:**
+
+```python
+{
+    "questions": [
+        {
+            "question": "Are you connected to institutional VPN?",
+            "header": "VPN",
+            "options": [
+                {"label": "Yes, VPN active", "description": "Better access + Scopus citations"},
+                {"label": "No VPN", "description": "Will use Open Access only"},
+                {"label": "Wait, connecting...", "description": "Pause for VPN connection"}
+            ],
+            "multiSelect": False
+        },
+        {
+            "question": "Enable Sci-Hub for PDF downloads?",
+            "header": "Sci-Hub",
+            "options": [
+                {"label": "No (Rec)", "description": "Only legal Open Access sources"},
+                {"label": "Yes", "description": "Use --scihub flag (at your own risk)"}
+            ],
+            "multiSelect": False
+        }
+    ]
+}
+```
+
+- If user chooses "Wait", pause and ask again when ready
+- If user enables Sci-Hub, add `--scihub` flag to snowball commands
+
+### Step 3: Run Snowballing
 
 For each seed paper:
 
@@ -91,7 +124,7 @@ uvx scimesh vault snowball {review_path}/ "DOI" --direction out -n 50
 uvx scimesh vault snowball {review_path}/ "DOI" --direction both -n 50
 ```
 
-### Step 3: Automatic Deduplication
+### Step 4: Automatic Deduplication
 
 The vault snowball command automatically:
 - Deduplicates against existing papers in `papers.yaml`
@@ -100,7 +133,7 @@ The vault snowball command automatically:
 - Downloads PDFs when available (Open Access)
 - Updates vault stats
 
-### Step 4: Screen New Papers
+### Step 5: Screen New Papers
 
 Use **scimesh:screening** to screen the newly added papers.
 
