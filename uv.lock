@@ -505,13 +505,14 @@ wheels = [
 
 [[package]]
 name = "scimesh"
-version = "0.1.6.dev2+g70f6c7d2e.d20260130"
+version = "0.2.3.dev2+g799a33317.d20260131"
 source = { editable = "." }
 dependencies = [
     { name = "cyclopts" },
     { name = "httpx" },
     { name = "pymupdf4llm" },
     { name = "pyyaml" },
+    { name = "streamish" },
     { name = "tenacity" },
 ]
 
@@ -531,6 +532,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "pymupdf4llm", specifier = ">=0.2.9" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "streamish", specifier = ">=0.1.0" },
     { name = "tenacity", specifier = ">=9.1.2" },
 ]
 
@@ -542,6 +544,15 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
     { name = "pytest-cov", specifier = ">=6.0.0" },
     { name = "ruff", specifier = ">=0.9.0" },
+]
+
+[[package]]
+name = "streamish"
+version = "0.1.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b5/ce/b28e192cef93ac7f2b629649da7e083778757a45a5d18c5eda2d41e862b3/streamish-0.1.3.tar.gz", hash = "sha256:5aeac48ab11555ceb676f784f300592290e9837ebda4a7016b27734652f6b67c", size = 30305 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b4/ed/ce730a45d487d9d4c448f7b9c3631e74e05f7856b4bd2154cdb79fe394ac/streamish-0.1.3-py3-none-any.whl", hash = "sha256:d6a5dc5243637d4b64d881e92ce6380d5e66061c080e816eed1659032ddd8a32", size = 13437 },
 ]
 
 [[package]]
