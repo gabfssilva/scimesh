@@ -11,7 +11,8 @@ def test_translate_title():
     provider = OpenAlex()
     q = title("transformer")
     search, filters = provider._build_params(q)
-    assert "transformer" in search
+    # Title searches now use title.search filter for field-specific matching
+    assert "title.search:transformer" in filters
 
 
 def test_translate_author():
@@ -25,7 +26,8 @@ def test_translate_abstract():
     provider = OpenAlex()
     q = abstract("attention mechanism")
     search, filters = provider._build_params(q)
-    assert "attention mechanism" in search
+    # Abstract searches now use abstract.search filter for field-specific matching
+    assert "abstract.search:attention mechanism" in filters
 
 
 def test_translate_keyword():
@@ -47,7 +49,8 @@ def test_translate_and():
     provider = OpenAlex()
     q = title("BERT") & author("Google")
     search, filters = provider._build_params(q)
-    assert "BERT" in search
+    # Both title and author use filters
+    assert "title.search:BERT" in filters
     assert "raw_author_name.search:Google" in filters
 
 
@@ -55,8 +58,8 @@ def test_translate_or():
     provider = OpenAlex()
     q = title("BERT") | title("GPT")
     search, filters = provider._build_params(q)
-    assert "BERT" in search
-    assert "GPT" in search
+    # OR of same field type uses pipe syntax: filter_name:value1|value2
+    assert "title.search:BERT|GPT" in filters
 
 
 def test_translate_year_range():
@@ -119,10 +122,10 @@ def test_reconstruct_abstract_multiple_occurrences():
 
 
 def test_translate_title_abs_no_duplicate_terms():
-    """TITLE-ABS should not duplicate search terms.
+    """TITLE-ABS should use title_and_abstract.search filter.
 
     When TITLE-ABS(x) expands to Or(Field(title, x), Field(abstract, x)),
-    the search terms should contain x only once, not twice.
+    it should be recognized as the TITLE-ABS pattern and use the dedicated filter.
     """
     from scimesh.query.parser import parse
 
@@ -130,22 +133,21 @@ def test_translate_title_abs_no_duplicate_terms():
     q = parse('TITLE-ABS("deep learning") AND TITLE-ABS(imputation)')
     search, filters = provider._build_params(q)
 
-    # Each term should appear only once, with AND groups space-separated
-    assert search == "deep learning imputation"
+    # Each term should use title_and_abstract.search filter, ANDed via comma
+    assert "title_and_abstract.search:deep learning" in filters
+    assert "title_and_abstract.search:imputation" in filters
 
 
 def test_translate_or_inside_title_abs():
-    """OR inside TITLE-ABS should be preserved in search syntax."""
+    """OR inside TITLE-ABS should use pipe syntax in filters."""
     from scimesh.query.parser import parse
 
     provider = OpenAlex()
     q = parse('TITLE-ABS("deep learning" OR "neural network")')
     search, filters = provider._build_params(q)
 
-    # Should use OR syntax with parentheses for the group
-    assert "deep learning" in search
-    assert "neural network" in search
-    assert "OR" in search
+    # OpenAlex OR syntax: filter_name:value1|value2
+    assert "title_and_abstract.search:deep learning|neural network" in filters
 
 
 def test_translate_complex_or_and_structure():
@@ -156,9 +158,9 @@ def test_translate_complex_or_and_structure():
     q = parse("TITLE-ABS(a OR b) AND TITLE-ABS(c OR d)")
     search, filters = provider._build_params(q)
 
-    # Should have two OR groups
-    assert "(a OR b)" in search
-    assert "(c OR d)" in search
+    # OpenAlex OR syntax: filter_name:value1|value2, ANDed via comma
+    assert "title_and_abstract.search:a|b" in filters
+    assert "title_and_abstract.search:c|d" in filters
 
 
 def _make_openalex_response(results: list[dict], total: int, next_cursor: str | None) -> dict:

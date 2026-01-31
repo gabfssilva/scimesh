@@ -90,32 +90,81 @@ class OpenAlex(Provider):
         return terms
 
     def _collect_terms_recursive(self, query: Query, terms: list[str], seen: set[str]) -> None:
-        """Recursively collect search terms, deduplicating."""
+        """Recursively collect search terms, deduplicating.
+
+        Note: title, abstract fields are handled as filters in _collect_filters.
+        Only keyword fields go to general search terms.
+        """
         match query:
-            case Field(field="title" | "abstract" | "keyword", value=v):
+            case Field(field="keyword", value=v):
                 if v not in seen:
                     seen.add(v)
                     terms.append(v)
             case Or(left=l, right=r):
-                self._collect_terms_recursive(l, terms, seen)
-                self._collect_terms_recursive(r, terms, seen)
+                # Check for TITLE-ABS pattern (handled as filter)
+                if not self._is_title_abs_pattern(query):
+                    self._collect_terms_recursive(l, terms, seen)
+                    self._collect_terms_recursive(r, terms, seen)
             case And(left=l, right=r):
                 # AND inside an OR group - collect from both sides
                 self._collect_terms_recursive(l, terms, seen)
                 self._collect_terms_recursive(r, terms, seen)
             case _:
-                pass  # Filters, year ranges, etc. handled separately
+                pass  # title, abstract, filters, year ranges, etc. handled separately
+
+    def _is_title_abs_pattern(self, query: Query) -> bool:
+        """Check if query is Or(Field(title, v), Field(abstract, v)) pattern."""
+        match query:
+            case Or(left=Field(field="title", value=v1), right=Field(field="abstract", value=v2)):
+                return v1 == v2
+            case Or(left=Field(field="abstract", value=v1), right=Field(field="title", value=v2)):
+                return v1 == v2
+            case _:
+                return False
+
+    def _get_title_abs_value(self, query: Query) -> str | None:
+        """Extract value from TITLE-ABS pattern."""
+        match query:
+            case Or(left=Field(field="title", value=v), right=Field(field="abstract")):
+                return v
+            case Or(left=Field(field="abstract"), right=Field(field="title", value=v)):
+                return v
+            case _:
+                return None
 
     def _collect_filters(self, query: Query, filters: list[str]) -> None:
-        """Collect filter parameters from query."""
+        """Collect filter parameters from query.
+
+        OpenAlex filter syntax:
+        - Comma (,) for AND between filters
+        - Pipe (|) for OR between values of the same filter type
+        """
         match query:
+            case Field(field="title", value=v):
+                filters.append(f"title.search:{v}")
+            case Field(field="abstract", value=v):
+                filters.append(f"abstract.search:{v}")
             case Field(field="fulltext", value=v):
                 filters.append(f"fulltext.search:{v}")
             case Field(field="author", value=v):
                 filters.append(f"raw_author_name.search:{v}")
             case Field(field="doi", value=v):
                 filters.append(f"doi:{v}")
-            case And(left=l, right=r) | Or(left=l, right=r):
+            case Or(left=l, right=r):
+                # Check for TITLE-ABS pattern: Or(Field(title, v), Field(abstract, v))
+                title_abs_value = self._get_title_abs_value(query)
+                if title_abs_value is not None:
+                    filters.append(f"title_and_abstract.search:{title_abs_value}")
+                else:
+                    # For OR, try to combine same-type filters with pipe
+                    or_filter = self._build_or_filter(query)
+                    if or_filter:
+                        filters.append(or_filter)
+                    else:
+                        # Fallback: collect separately (may not produce correct OR semantics)
+                        self._collect_filters(l, filters)
+                        self._collect_filters(r, filters)
+            case And(left=l, right=r):
                 self._collect_filters(l, filters)
                 self._collect_filters(r, filters)
             case Not(operand=o):
@@ -140,7 +189,78 @@ class OpenAlex(Provider):
                 if max_val is not None:
                     filters.append(f"cited_by_count:<{max_val + 1}")
             case _:
-                pass  # title, abstract, keyword handled as search terms
+                pass  # keyword handled as search terms
+
+    def _build_or_filter(self, query: Query) -> str | None:
+        """Build an OR filter expression using pipe syntax.
+
+        OpenAlex OR syntax: filter_name:value1|value2
+
+        Returns filter string like "title.search:term1|term2" or None
+        if the OR cannot be represented as a single filter type.
+        """
+        # First check for OR of TITLE-ABS patterns
+        title_abs_values = self._collect_or_title_abs_values(query)
+        if title_abs_values:
+            # OpenAlex OR syntax: filter:value1|value2
+            return f"title_and_abstract.search:{'|'.join(title_abs_values)}"
+
+        # Collect all Field nodes from the OR tree
+        fields = self._collect_or_fields(query)
+        if not fields:
+            return None
+
+        # Check if all fields are the same type (e.g., all title)
+        field_types = {f.field for f in fields}
+        if len(field_types) != 1:
+            return None  # Mixed field types, cannot combine
+
+        field_type = field_types.pop()
+        filter_name = self._field_to_filter_name(field_type)
+        if filter_name is None:
+            return None
+
+        # Build OR expression: filter_name:value1|value2
+        values = [f.value for f in fields]
+        return f"{filter_name}:{'|'.join(values)}"
+
+    def _collect_or_title_abs_values(self, query: Query) -> list[str]:
+        """Collect values from OR tree where each leaf is a TITLE-ABS pattern."""
+        match query:
+            case Or(left=l, right=r):
+                # Check if this is a TITLE-ABS pattern itself
+                title_abs_value = self._get_title_abs_value(query)
+                if title_abs_value is not None:
+                    return [title_abs_value]
+                # Otherwise recurse
+                left_vals = self._collect_or_title_abs_values(l)
+                right_vals = self._collect_or_title_abs_values(r)
+                if left_vals and right_vals:
+                    return left_vals + right_vals
+                return []
+            case _:
+                return []
+
+    def _collect_or_fields(self, query: Query) -> list[Field]:
+        """Collect all Field nodes from an OR tree."""
+        match query:
+            case Field() as f:
+                return [f]
+            case Or(left=l, right=r):
+                return self._collect_or_fields(l) + self._collect_or_fields(r)
+            case _:
+                return []
+
+    def _field_to_filter_name(self, field_type: str) -> str | None:
+        """Map field type to OpenAlex filter name."""
+        mapping = {
+            "title": "title.search",
+            "abstract": "abstract.search",
+            "fulltext": "fulltext.search",
+            "author": "raw_author_name.search",
+            "doi": "doi",
+        }
+        return mapping.get(field_type)
 
     MAX_OR_TERMS = 10  # OpenAlex limit
 

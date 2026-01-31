@@ -1,0 +1,13 @@
+{
+  "name": "scimesh",
+  "description": "Systematic literature review skills for scientific research using scimesh",
+  "version": "0.1.0",
+  "author": {
+    "name": "Gabriel Francisco",
+    "email": "gabfssilva@gmail.com"
+  },
+  "homepage": "https://github.com/gabfssilva/scimesh",
+  "repository": "https://github.com/gabfssilva/scimesh",
+  "license": "MIT",
+  "keywords": ["slr", "literature-review", "prisma", "papers", "research", "scimesh"]
+}

@@ -268,13 +268,10 @@ def test_vault_exporter_creates_structure(tmp_path):
     stats = exporter.export(
         result=result,
         output_dir=output_dir,
-        query="TITLE(test)",
-        providers=["arxiv", "openalex"],
     )
 
     # Check structure created
     assert output_dir.exists()
-    assert (output_dir / "index.yaml").exists()
 
     # Check paper folders
     paper1_dir = output_dir / "2017-vaswani-attention-is-all-you-need"
@@ -296,10 +293,18 @@ def test_vault_exporter_skips_existing(tmp_path):
 
     output_dir = tmp_path / "vault"
 
-    # Create existing paper folder
+    # Create existing paper folder and papers.yaml
     existing_folder = output_dir / "2017-vaswani-attention-is-all-you-need"
     existing_folder.mkdir(parents=True)
     (existing_folder / "index.yaml").write_text("title: Existing\n")
+    # Create papers.yaml with the existing paper
+    (output_dir / "papers.yaml").write_text(
+        "- path: 2017-vaswani-attention-is-all-you-need\n"
+        "  doi: ''\n"
+        "  title: Existing\n"
+        "  status: unscreened\n"
+        "  search_ids: []\n"
+    )
 
     papers = [
         Paper(
@@ -315,8 +320,6 @@ def test_vault_exporter_skips_existing(tmp_path):
     stats = exporter.export(
         result=result,
         output_dir=output_dir,
-        query="TITLE(test)",
-        providers=["arxiv"],
     )
 
     # Should skip existing
@@ -356,8 +359,6 @@ async def test_vault_exporter_downloads_pdf(tmp_path: Path):
     stats = await exporter.export_async(
         result=result,
         output_dir=output_dir,
-        query="TITLE(test)",
-        providers=["openalex"],
     )
 
     # Check PDF was downloaded
@@ -397,8 +398,6 @@ async def test_vault_exporter_handles_download_failure(tmp_path: Path):
     stats = await exporter.export_async(
         result=result,
         output_dir=output_dir,
-        query="TITLE(test)",
-        providers=["openalex"],
     )
 
     # Paper still exported, just without PDF

@@ -263,16 +263,12 @@ class VaultExporter:
         self,
         result: SearchResult,
         output_dir: Path,
-        query: str,
-        providers: list[str],
     ) -> VaultStats:
         """Export papers to vault structure.
 
         Args:
             result: Search results to export.
             output_dir: Directory to create vault in.
-            query: The search query used.
-            providers: List of providers searched.
 
         Returns:
             VaultStats with export statistics.
@@ -280,18 +276,14 @@ class VaultExporter:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         stats = VaultStats()
-        papers_list: list[dict[str, str]] = []
 
-        # Load existing index if present
-        existing_data = None
-        root_index_path = output_dir / "index.yaml"
-        if root_index_path.exists():
-            existing_data = yaml.safe_load(root_index_path.read_text())
-
-        # Get existing paper paths to check for skips
+        # Get existing paper paths from papers.yaml to check for skips
         existing_paths: set[str] = set()
-        if existing_data and "papers" in existing_data:
-            existing_paths = {p["path"] for p in existing_data["papers"]}
+        papers_yaml_path = output_dir / "papers.yaml"
+        if papers_yaml_path.exists():
+            papers_data = yaml.safe_load(papers_yaml_path.read_text())
+            if papers_data:
+                existing_paths = {p["path"] for p in papers_data}
 
         for paper in result.papers:
             folder_name = generate_folder_name(paper)
@@ -313,29 +305,10 @@ class VaultExporter:
             paper_index = build_paper_index(paper, pdf_filename)
             (paper_dir / "index.yaml").write_text(paper_index, encoding="utf-8")
 
-            # Track for root index
-            papers_list.append(
-                {
-                    "path": folder_name,
-                    "doi": paper.doi or "",
-                    "title": paper.title,
-                }
-            )
-
             stats.total += 1
             stats.by_provider[paper.source] = stats.by_provider.get(paper.source, 0) + 1
 
             logger.debug("Exported: %s", folder_name)
-
-        # Write root index.yaml
-        root_index = build_root_index(
-            query=query,
-            providers=providers,
-            stats=stats,
-            papers=papers_list,
-            existing_data=existing_data,
-        )
-        root_index_path.write_text(root_index, encoding="utf-8")
 
         return stats
 
@@ -343,16 +316,12 @@ class VaultExporter:
         self,
         result: SearchResult,
         output_dir: Path,
-        query: str,
-        providers: list[str],
     ) -> VaultStats:
         """Export papers to vault structure with async PDF downloads.
 
         Args:
             result: Search results to export.
             output_dir: Directory to create vault in.
-            query: The search query used.
-            providers: List of providers searched.
 
         Returns:
             VaultStats with export statistics.
@@ -360,18 +329,14 @@ class VaultExporter:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         stats = VaultStats()
-        papers_list: list[dict[str, str]] = []
 
-        # Load existing index if present
-        existing_data = None
-        root_index_path = output_dir / "index.yaml"
-        if root_index_path.exists():
-            existing_data = yaml.safe_load(root_index_path.read_text())
-
-        # Get existing paper paths to check for skips
+        # Get existing paper paths from papers.yaml to check for skips
         existing_paths: set[str] = set()
-        if existing_data and "papers" in existing_data:
-            existing_paths = {p["path"] for p in existing_data["papers"]}
+        papers_yaml_path = output_dir / "papers.yaml"
+        if papers_yaml_path.exists():
+            papers_data = yaml.safe_load(papers_yaml_path.read_text())
+            if papers_data:
+                existing_paths = {p["path"] for p in papers_data}
 
         # Filter papers to export (skip existing)
         papers_to_export: list[tuple[Paper, str, Path]] = []
@@ -431,27 +396,8 @@ class VaultExporter:
             paper_index = build_paper_index(paper, pdf_filename)
             (paper_dir / "index.yaml").write_text(paper_index, encoding="utf-8")
 
-            # Track for root index
-            papers_list.append(
-                {
-                    "path": folder_name,
-                    "doi": paper.doi or "",
-                    "title": paper.title,
-                }
-            )
-
             stats.total += 1
             stats.by_provider[paper.source] = stats.by_provider.get(paper.source, 0) + 1
             logger.debug("Exported: %s", folder_name)
-
-        # Write root index.yaml
-        root_index = build_root_index(
-            query=query,
-            providers=providers,
-            stats=stats,
-            papers=papers_list,
-            existing_data=existing_data,
-        )
-        root_index_path.write_text(root_index, encoding="utf-8")
 
         return stats

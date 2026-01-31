@@ -18,6 +18,7 @@ from scimesh.export.tree import TreeExporter
 from scimesh.models import Paper, SearchResult, merge_papers
 from scimesh.providers import Arxiv, CrossRef, OpenAlex, Scopus, SemanticScholar
 from scimesh.providers.base import Provider
+from scimesh.vault.cli import vault_app
 
 if TYPE_CHECKING:
     from scimesh.download import FallbackDownloader
@@ -26,6 +27,9 @@ app = cyclopts.App(
     name="scimesh",
     help="Scientific paper search across multiple providers.",
 )
+
+# Register vault subcommand
+app.command(vault_app)
 
 
 def _setup_logging(log_level: str | None) -> None:
@@ -307,8 +311,6 @@ def search(
                 stats = await exporter.export_async(
                     result=result,
                     output_dir=output,
-                    query=query,
-                    providers=providers,
                 )
 
             print(
