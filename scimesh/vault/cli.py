@@ -683,7 +683,7 @@ def vault_search(
 
     async def _run_search() -> tuple[int, int]:
         from scimesh.cli import _create_downloader
-        from scimesh.export.vault import generate_folder_name
+        from scimesh.export.vault import get_paper_path
 
         stream = do_search(
             query,
@@ -724,7 +724,7 @@ def vault_search(
         # Build PaperEntry list from found papers
         paper_entries = [
             PaperEntry(
-                path=generate_folder_name(p),
+                path=get_paper_path(p, vault_path)[1],
                 doi=p.doi or "",
                 title=p.title,
                 status=ScreeningStatus.UNSCREENED,
@@ -827,7 +827,7 @@ def vault_snowball(
 
     async def _run_snowball() -> tuple[int, int]:
         from scimesh.cli import _create_downloader
-        from scimesh.export.vault import VaultExporter, generate_folder_name
+        from scimesh.export.vault import VaultExporter, get_paper_path
         from scimesh.models import Paper, SearchResult
 
         all_papers: list[Paper] = []
@@ -871,7 +871,7 @@ def vault_snowball(
         # Build PaperEntry list from found papers
         paper_entries = [
             PaperEntry(
-                path=generate_folder_name(p),
+                path=get_paper_path(p, vault_path)[1],
                 doi=p.doi or "",
                 title=p.title,
                 status=ScreeningStatus.UNSCREENED,

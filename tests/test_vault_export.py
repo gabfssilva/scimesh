@@ -5,64 +5,79 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import yaml
 
-from scimesh.export.vault import generate_folder_name
+from scimesh.export.vault import generate_paper_slug, get_paper_path
 from scimesh.models import Author, Paper
 
 
-def test_generate_folder_name_basic():
+def test_generate_paper_slug_basic():
     paper = Paper(
         title="Attention Is All You Need",
         authors=(Author(name="Ashish Vaswani"), Author(name="Noam Shazeer")),
         year=2017,
         source="arxiv",
     )
-    result = generate_folder_name(paper)
-    assert result == "2017-vaswani-attention-is-all-you-need"
+    result = generate_paper_slug(paper)
+    # 5 title words + author = within 6 word limit
+    assert result == "vaswani-attention-is-all-you-need"
 
 
-def test_generate_folder_name_single_author():
+def test_generate_paper_slug_single_author():
     paper = Paper(
         title="BERT: Pre-training of Deep Bidirectional Transformers",
         authors=(Author(name="Jacob Devlin"),),
         year=2019,
         source="scopus",
     )
-    result = generate_folder_name(paper)
-    assert result == "2019-devlin-bert-pre-training-of-deep-bidirectional"
+    result = generate_paper_slug(paper)
+    # Truncated to 6 words from title
+    assert result == "devlin-bert-pre-training-of-deep-bidirectional"
 
 
-def test_generate_folder_name_special_chars():
+def test_generate_paper_slug_special_chars():
     paper = Paper(
         title="What's in a Name? The Impact of AI/ML on Society",
         authors=(Author(name="Jane O'Connor"),),
         year=2023,
         source="openalex",
     )
-    result = generate_folder_name(paper)
-    # Special chars removed, lowercase, hyphenated
-    assert result == "2023-oconnor-whats-in-a-name-the-impact"
+    result = generate_paper_slug(paper)
+    # Special chars removed, lowercase, hyphenated, 6 words from title
+    assert result == "oconnor-whats-in-a-name-the-impact"
 
 
-def test_generate_folder_name_short_title():
+def test_generate_paper_slug_short_title():
     paper = Paper(
         title="GPT-4",
         authors=(Author(name="OpenAI Team"),),
         year=2023,
         source="arxiv",
     )
-    result = generate_folder_name(paper)
-    assert result == "2023-team-gpt-4"
+    result = generate_paper_slug(paper)
+    assert result == "team-gpt-4"
 
 
-def test_generate_folder_name_no_authors():
+def test_generate_paper_slug_no_authors():
     paper = Paper(
         title="Anonymous Research Paper",
         authors=(),
         year=2020,
         source="arxiv",
     )
-    result = generate_folder_name(paper)
-    assert result == "2020-unknown-anonymous-research-paper"
+    result = generate_paper_slug(paper)
+    assert result == "unknown-anonymous-research-paper"
+
+
+def test_get_paper_path_returns_correct_structure(tmp_path):
+    paper = Paper(
+        title="Attention Is All You Need",
+        authors=(Author(name="Ashish Vaswani"),),
+        year=2017,
+        source="arxiv",
+    )
+    full_path, relative_path = get_paper_path(paper, tmp_path)
+
+    assert relative_path == "papers/2017/vaswani-attention-is-all-you-need"
+    assert full_path == tmp_path / "papers" / "2017" / "vaswani-attention-is-all-you-need"
 
 
 def test_build_paper_index_full():
@@ -159,11 +174,15 @@ def test_build_root_index_new():
 
     papers_list = [
         {
-            "path": "2017-vaswani-attention-is-all",
+            "path": "papers/2017/vaswani-attention-is-all",
             "doi": "10.5555/123",
             "title": "Attention Is All You Need",
         },
-        {"path": "2020-brown-language-models", "doi": "10.5555/456", "title": "Language Models"},
+        {
+            "path": "papers/2020/brown-language-models",
+            "doi": "10.5555/456",
+            "title": "Language Models",
+        },
     ]
 
     result = build_root_index(
@@ -199,7 +218,11 @@ def test_build_root_index_update_existing():
             "skipped": 0,
         },
         "papers": [
-            {"path": "2017-vaswani-attention-is-all", "doi": "10.5555/123", "title": "Paper 1"},
+            {
+                "path": "papers/2017/vaswani-attention-is-all",
+                "doi": "10.5555/123",
+                "title": "Paper 1",
+            },
         ],
     }
 
@@ -212,7 +235,7 @@ def test_build_root_index_update_existing():
     )
 
     new_papers = [
-        {"path": "2020-brown-language-models", "doi": "10.5555/456", "title": "Paper 2"},
+        {"path": "papers/2020/brown-language-models", "doi": "10.5555/456", "title": "Paper 2"},
     ]
 
     result = build_root_index(
@@ -236,8 +259,8 @@ def test_build_root_index_update_existing():
     # Papers merged (no duplicates by path)
     assert len(data["papers"]) == 2
     paths = [p["path"] for p in data["papers"]]
-    assert "2017-vaswani-attention-is-all" in paths
-    assert "2020-brown-language-models" in paths
+    assert "papers/2017/vaswani-attention-is-all" in paths
+    assert "papers/2020/brown-language-models" in paths
 
 
 def test_vault_exporter_creates_structure(tmp_path):
@@ -273,9 +296,9 @@ def test_vault_exporter_creates_structure(tmp_path):
     # Check structure created
     assert output_dir.exists()
 
-    # Check paper folders
-    paper1_dir = output_dir / "2017-vaswani-attention-is-all-you-need"
-    paper2_dir = output_dir / "2019-devlin-bert-paper"
+    # Check paper folders with new structure: papers/{year}/{slug}/
+    paper1_dir = output_dir / "papers" / "2017" / "vaswani-attention-is-all-you-need"
+    paper2_dir = output_dir / "papers" / "2019" / "devlin-bert-paper"
 
     assert paper1_dir.exists()
     assert (paper1_dir / "index.yaml").exists()
@@ -293,13 +316,13 @@ def test_vault_exporter_skips_existing(tmp_path):
 
     output_dir = tmp_path / "vault"
 
-    # Create existing paper folder and papers.yaml
-    existing_folder = output_dir / "2017-vaswani-attention-is-all-you-need"
+    # Create existing paper folder with new structure
+    existing_folder = output_dir / "papers" / "2017" / "vaswani-attention-is-all-you-need"
     existing_folder.mkdir(parents=True)
     (existing_folder / "index.yaml").write_text("title: Existing\n")
-    # Create papers.yaml with the existing paper
+    # Create papers.yaml with the existing paper (new path format)
     (output_dir / "papers.yaml").write_text(
-        "- path: 2017-vaswani-attention-is-all-you-need\n"
+        "- path: papers/2017/vaswani-attention-is-all-you-need\n"
         "  doi: ''\n"
         "  title: Existing\n"
         "  status: unscreened\n"
@@ -361,8 +384,8 @@ async def test_vault_exporter_downloads_pdf(tmp_path: Path):
         output_dir=output_dir,
     )
 
-    # Check PDF was downloaded
-    paper_dir = output_dir / "2020-one-paper-with-pdf"
+    # Check PDF was downloaded (new structure)
+    paper_dir = output_dir / "papers" / "2020" / "one-paper-with-pdf"
     assert (paper_dir / "fulltext.pdf").exists()
 
     # Check index.yaml references PDF
@@ -400,8 +423,8 @@ async def test_vault_exporter_handles_download_failure(tmp_path: Path):
         output_dir=output_dir,
     )
 
-    # Paper still exported, just without PDF
-    paper_dir = output_dir / "2020-one-paper-without-pdf"
+    # Paper still exported, just without PDF (new structure)
+    paper_dir = output_dir / "papers" / "2020" / "one-paper-without-pdf"
     assert paper_dir.exists()
     assert not (paper_dir / "fulltext.pdf").exists()
 

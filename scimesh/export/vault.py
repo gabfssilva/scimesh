@@ -31,18 +31,16 @@ class VaultStats:
     skipped: int = 0
 
 
-def generate_folder_name(paper: Paper, max_slug_words: int = 6) -> str:
-    """Generate folder name in format: year-author-slug.
+def generate_paper_slug(paper: Paper, max_slug_words: int = 6) -> str:
+    """Generate paper slug in format: author-title-words.
 
     Args:
-        paper: The paper to generate a folder name for.
+        paper: The paper to generate a slug for.
         max_slug_words: Maximum words in the title slug.
 
     Returns:
-        A filesystem-safe folder name like "2017-vaswani-attention-is-all-you".
+        A filesystem-safe slug like "vaswani-attention-is-all-you".
     """
-    year = str(paper.year)
-
     # Extract first author's surname
     if paper.authors:
         first_author = paper.authors[0].name
@@ -57,7 +55,28 @@ def generate_folder_name(paper: Paper, max_slug_words: int = 6) -> str:
     words = title_slug.split("-")
     truncated_slug = "-".join(words[:max_slug_words])
 
-    return f"{year}-{surname}-{truncated_slug}"
+    return f"{surname}-{truncated_slug}"
+
+
+def get_paper_path(paper: Paper, base_dir: Path, max_slug_words: int = 6) -> tuple[Path, str]:
+    """Get the full path for a paper in the vault structure.
+
+    Papers are organized as: papers/{year}/{slug}/
+
+    Args:
+        paper: The paper to get path for.
+        base_dir: Base vault directory.
+        max_slug_words: Maximum words in the title slug.
+
+    Returns:
+        Tuple of (full_path, relative_path_string).
+        relative_path_string is used for papers.yaml tracking.
+    """
+    year = str(paper.year)
+    slug = generate_paper_slug(paper, max_slug_words)
+    relative_path = f"papers/{year}/{slug}"
+    full_path = base_dir / "papers" / year / slug
+    return full_path, relative_path
 
 
 def _slugify(text: str) -> str:
@@ -286,13 +305,12 @@ class VaultExporter:
                 existing_paths = {p["path"] for p in papers_data}
 
         for paper in result.papers:
-            folder_name = generate_folder_name(paper)
-            paper_dir = output_dir / folder_name
+            paper_dir, relative_path = get_paper_path(paper, output_dir)
 
             # Skip if already exists
-            if paper_dir.exists() or folder_name in existing_paths:
+            if paper_dir.exists() or relative_path in existing_paths:
                 stats.skipped += 1
-                logger.debug("Skipping existing: %s", folder_name)
+                logger.debug("Skipping existing: %s", relative_path)
                 continue
 
             # Create paper folder
@@ -308,7 +326,7 @@ class VaultExporter:
             stats.total += 1
             stats.by_provider[paper.source] = stats.by_provider.get(paper.source, 0) + 1
 
-            logger.debug("Exported: %s", folder_name)
+            logger.debug("Exported: %s", relative_path)
 
         return stats
 
@@ -341,46 +359,45 @@ class VaultExporter:
         # Filter papers to export (skip existing)
         papers_to_export: list[tuple[Paper, str, Path]] = []
         for paper in result.papers:
-            folder_name = generate_folder_name(paper)
-            paper_dir = output_dir / folder_name
+            paper_dir, relative_path = get_paper_path(paper, output_dir)
 
-            if paper_dir.exists() or folder_name in existing_paths:
+            if paper_dir.exists() or relative_path in existing_paths:
                 stats.skipped += 1
-                logger.debug("Skipping existing: %s", folder_name)
+                logger.debug("Skipping existing: %s", relative_path)
                 continue
 
-            papers_to_export.append((paper, folder_name, paper_dir))
+            papers_to_export.append((paper, relative_path, paper_dir))
 
         # Download PDFs concurrently
         semaphore = asyncio.Semaphore(self.max_concurrent_downloads)
 
-        async def download_pdf(paper: Paper, folder_name: str) -> bytes | None:
+        async def download_pdf(paper: Paper, relative_path: str) -> bytes | None:
             """Download PDF with concurrency limit."""
             if not self.downloader:
                 return None
             if not paper.doi:
-                logger.info("  [--] No DOI: %s", folder_name)
+                logger.info("  [--] No DOI: %s", relative_path)
                 return None
 
             async with semaphore:
                 try:
                     pdf_bytes = await self.downloader.download(paper.doi)
                     if pdf_bytes:
-                        logger.info("  [OK] PDF: %s", folder_name)
+                        logger.info("  [OK] PDF: %s", relative_path)
                         return pdf_bytes
-                    logger.info("  [--] PDF not found: %s", folder_name)
+                    logger.info("  [--] PDF not found: %s", relative_path)
                 except Exception as e:
-                    logger.info("  [!!] PDF error: %s - %s", folder_name, e)
+                    logger.info("  [!!] PDF error: %s - %s", relative_path, e)
                 return None
 
         # Start all downloads concurrently
         download_tasks = [
-            download_pdf(paper, folder_name) for paper, folder_name, _ in papers_to_export
+            download_pdf(paper, relative_path) for paper, relative_path, _ in papers_to_export
         ]
         pdf_results = await asyncio.gather(*download_tasks)
 
         # Write papers to disk (sequential to avoid I/O contention)
-        for (paper, folder_name, paper_dir), pdf_bytes in zip(
+        for (paper, relative_path, paper_dir), pdf_bytes in zip(
             papers_to_export, pdf_results, strict=True
         ):
             paper_dir.mkdir(parents=True, exist_ok=True)
@@ -398,6 +415,6 @@ class VaultExporter:
 
             stats.total += 1
             stats.by_provider[paper.source] = stats.by_provider.get(paper.source, 0) + 1
-            logger.debug("Exported: %s", folder_name)
+            logger.debug("Exported: %s", relative_path)
 
         return stats
