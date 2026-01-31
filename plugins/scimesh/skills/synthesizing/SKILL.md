@@ -99,13 +99,15 @@ uvx scimesh vault prisma {review_path}/ -o synthesis.md
 ├── papers.yaml         # Paper list with search_ids
 ├── synthesis.md        # PRISMA + synthesis (generated)
 ├── included.bib        # BibTeX of included papers
-└── {paper-slug}/       # Individual papers
-    ├── index.yaml
-    ├── fulltext.pdf
-    ├── problem.md
-    ├── method.md
-    ├── conclusion.md
-    └── condensed.md
+└── papers/
+    └── {year}/             # Organized by publication year
+        └── {paper-slug}/
+            ├── index.yaml
+            ├── fulltext.pdf
+            ├── problem.md
+            ├── method.md
+            ├── result.md
+            └── condensed.md
 ```
 
 ## Ask Before Export Format

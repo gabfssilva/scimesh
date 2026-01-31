@@ -128,9 +128,11 @@ The vault creates this structure:
 ├── searches.yaml    # Search history (queries, results)
 ├── papers.yaml      # Paper list with search_ids
 ├── synthesis.md     # Final PRISMA + synthesis (generated later)
-└── {paper-slug}/    # One folder per paper
-    ├── index.yaml   # Paper metadata + screening status
-    └── fulltext.pdf # PDF (if downloaded)
+└── papers/
+    └── {year}/              # Organized by publication year
+        └── {paper-slug}/
+            ├── index.yaml   # Paper metadata + screening status
+            └── fulltext.pdf # PDF (if downloaded)
 ```
 
 **Note:** `{review_path}` is user-defined. Examples: `./reviews/my-slr/`, `~/Documents/reviews/transformers-2024/`
