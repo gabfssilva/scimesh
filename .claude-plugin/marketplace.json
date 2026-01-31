@@ -15,7 +15,7 @@
         "name": "Gabriel Francisco",
         "email": "gabfssilva@gmail.com"
       },
-      "source": ".",
+      "source": "./plugins/scimesh",
       "category": "research",
       "homepage": "https://github.com/gabfssilva/scimesh",
       "keywords": ["slr", "literature-review", "prisma", "papers", "research", "scimesh"]
