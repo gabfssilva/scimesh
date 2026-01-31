@@ -18,6 +18,82 @@ class ScreeningStatus(str, Enum):
     UNSCREENED = "unscreened"
 
 
+class FrameworkType(str, Enum):
+    """Type of research question framework."""
+
+    PICO = "pico"
+    SPIDER = "spider"
+    CUSTOM = "custom"
+
+
+class FieldCategory(str, Enum):
+    """Category of a framework field."""
+
+    CONTEXT = "context"
+    ACTION = "action"
+    COMPARISON = "comparison"
+    RESULT = "result"
+
+
+@dataclass(frozen=True)
+class FieldSchema:
+    """Schema definition for a custom framework field."""
+
+    name: str
+    category: FieldCategory
+    required: bool = True
+    description: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for YAML serialization."""
+        return {
+            "name": self.name,
+            "category": self.category.value,
+            "required": self.required,
+            "description": self.description,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> FieldSchema:
+        """Create from dictionary."""
+        return cls(
+            name=data.get("name", ""),
+            category=FieldCategory(data.get("category", "context")),
+            required=data.get("required", True),
+            description=data.get("description", ""),
+        )
+
+
+@dataclass(frozen=True)
+class Framework:
+    """Research question framework (PICO, SPIDER, or custom)."""
+
+    type: FrameworkType
+    fields: dict[str, str]  # name -> value
+    schema: tuple[FieldSchema, ...] = ()  # Only for custom
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for YAML serialization."""
+        result: dict[str, Any] = {
+            "type": self.type.value,
+            "fields": dict(self.fields),
+        }
+        if self.schema:
+            result["schema"] = [fs.to_dict() for fs in self.schema]
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Framework:
+        """Create from dictionary."""
+        schema_data = data.get("schema", [])
+        schema = tuple(FieldSchema.from_dict(s) for s in schema_data)
+        return cls(
+            type=FrameworkType(data.get("type", "pico")),
+            fields=dict(data.get("fields", {})),
+            schema=schema,
+        )
+
+
 @dataclass(frozen=True)
 class ScreeningDecision:
     """A screening decision for a paper."""
@@ -32,10 +108,7 @@ class Protocol:
     """SLR protocol definition."""
 
     question: str
-    population: str = ""
-    intervention: str = ""
-    comparison: str = ""
-    outcome: str = ""
+    framework: Framework
     inclusion: tuple[str, ...] = ()
     exclusion: tuple[str, ...] = ()
     databases: tuple[str, ...] = ("arxiv", "openalex", "semantic_scholar")
@@ -45,10 +118,7 @@ class Protocol:
         """Convert to dictionary for YAML serialization."""
         return {
             "question": self.question,
-            "population": self.population,
-            "intervention": self.intervention,
-            "comparison": self.comparison,
-            "outcome": self.outcome,
+            "framework": self.framework.to_dict(),
             "inclusion": list(self.inclusion),
             "exclusion": list(self.exclusion),
             "databases": list(self.databases),
@@ -60,10 +130,7 @@ class Protocol:
         """Create from dictionary."""
         return cls(
             question=data.get("question", ""),
-            population=data.get("population", ""),
-            intervention=data.get("intervention", ""),
-            comparison=data.get("comparison", ""),
-            outcome=data.get("outcome", ""),
+            framework=Framework.from_dict(data.get("framework", {})),
             inclusion=tuple(data.get("inclusion", [])),
             exclusion=tuple(data.get("exclusion", [])),
             databases=tuple(data.get("databases", ["arxiv", "openalex", "semantic_scholar"])),
@@ -238,3 +305,20 @@ class VaultIndex:
             protocol=Protocol.from_dict(data.get("protocol", {})),
             stats=VaultStats.from_dict(data.get("stats", {})),
         )
+
+
+FRAMEWORK_TEMPLATES: dict[FrameworkType, tuple[FieldSchema, ...]] = {
+    FrameworkType.PICO: (
+        FieldSchema("population", FieldCategory.CONTEXT, True, "Who/what is being studied"),
+        FieldSchema("intervention", FieldCategory.ACTION, True, "What is being applied"),
+        FieldSchema("comparison", FieldCategory.COMPARISON, False, "Alternative approaches"),
+        FieldSchema("outcome", FieldCategory.RESULT, True, "What is being measured"),
+    ),
+    FrameworkType.SPIDER: (
+        FieldSchema("sample", FieldCategory.CONTEXT, True, "Group being studied"),
+        FieldSchema("phenomenon", FieldCategory.ACTION, True, "Experience/behavior of interest"),
+        FieldSchema("design", FieldCategory.CONTEXT, True, "Research design type"),
+        FieldSchema("evaluation", FieldCategory.RESULT, True, "Outcome measures"),
+        FieldSchema("research_type", FieldCategory.CONTEXT, True, "Qualitative/mixed methods"),
+    ),
+}

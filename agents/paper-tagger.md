@@ -16,7 +16,12 @@ Read the condensed paper markdown and the review protocol. Add YAML frontmatter 
 ## Inputs
 
 1. `{paper_path}/condensed.md` - The condensed paper extraction
-2. `{review_path}/index.yaml` - Review protocol with research question and criteria
+2. `{review_path}/index.yaml` - Review protocol with:
+   - `question`: Research question
+   - `framework.type`: pico, spider, or custom
+   - `framework.fields`: Dictionary of field names and values
+   - `inclusion`: Inclusion criteria
+   - `exclusion`: Exclusion criteria
 
 Note: Papers are organized as `{review_path}/papers/{year}/{paper-slug}/`
 
@@ -110,10 +115,44 @@ Single lowercase term describing the main methodological approach:
 - `methodological`: New methods, algorithms, architectures
 - `review`: Survey, systematic review, meta-analysis
 
+## Framework-Aware Relevance Assessment
+
+Read `protocol.framework.type` and `protocol.framework.fields` from the protocol.
+
+For PICO frameworks:
+- Reference population, intervention, comparison, outcome in rationale
+
+For SPIDER frameworks:
+- Reference sample, phenomenon, design, evaluation, research_type in rationale
+
+For Custom frameworks:
+- Reference the actual field names from `protocol.framework.fields`
+- Use the field names as they appear in the protocol
+
+Always match the terminology used in the protocol's framework fields.
+
+### Example for PICO protocol:
+```yaml
+relevance:
+  rationale: |
+    This paper directly addresses the population (patients with diabetes)
+    by evaluating the intervention (metformin treatment) against the
+    comparison (placebo) for the outcome (HbA1c levels).
+```
+
+### Example for Custom protocol with task/method/metrics:
+```yaml
+relevance:
+  rationale: |
+    This paper addresses the task (tabular data imputation) using the
+    method (diffusion models) and reports relevant metrics (RMSE, MAE).
+```
+
 ## Guidelines
 
 - Extract metadata accurately from the condensed.md content
 - Tags should be specific and useful for filtering/grouping papers
 - Relevance rationale must reference the specific research question from the protocol
+- Reference the framework fields from the protocol when explaining relevance
 - Be honest about relevance - not every included paper is highly relevant
 - If DOI is not mentioned in condensed.md, use "unknown"

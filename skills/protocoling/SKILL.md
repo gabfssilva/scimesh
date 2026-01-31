@@ -3,12 +3,12 @@ name: protocoling
 description: |
   Use when starting a systematic literature review to define the research protocol.
 
-  TRIGGERS: slr init, protocol, PICO, define criteria, start review, iniciar revisao, definir protocolo, criterios de inclusao, criterios de exclusao
+  TRIGGERS: slr init, protocol, PICO, SPIDER, define criteria, start review, iniciar revisao, definir protocolo, criterios de inclusao, criterios de exclusao
 ---
 
 # Protocoling
 
-Define research protocol for systematic literature review using PICO framework.
+Define research protocol for systematic literature review using PICO, SPIDER, or Custom framework.
 
 ## Overview
 
@@ -26,7 +26,94 @@ Guide users through defining a **complete SLR protocol** before any search. This
 
 Use AskUserQuestion to gather protocol info. **All questions need 2-4 options.**
 
-**Question 1: Year range**
+### Step 1: Framework Selection (FIRST QUESTION)
+
+**Question 1: Framework**
+```python
+{
+    "question": "Which framework do you want to use for your research question?",
+    "header": "Framework",
+    "options": [
+        {"label": "PICO", "description": "Population, Intervention, Comparison, Outcome - quantitative/clinical research"},
+        {"label": "SPIDER", "description": "Sample, Phenomenon, Design, Evaluation, Research type - qualitative research"},
+        {"label": "Custom", "description": "Build your own from building blocks - flexible for any domain"}
+    ],
+    "multiSelect": False
+}
+```
+
+### Step 2: Framework-Specific Questions
+
+#### If PICO Selected
+
+Ask for PICO components:
+- **Population**: Who or what is being studied?
+- **Intervention**: What treatment, method, or exposure?
+- **Comparison**: What is the alternative (if any)?
+- **Outcome**: What effects or results are measured?
+
+#### If SPIDER Selected
+
+Ask for SPIDER components:
+- **Sample**: Who are the participants?
+- **Phenomenon of Interest**: What experience or behavior?
+- **Design**: What research design (interviews, focus groups, etc.)?
+- **Evaluation**: What outcomes or findings?
+- **Research type**: What type (qualitative, mixed-methods)?
+
+#### If Custom Selected
+
+Ask the following building block questions:
+
+**Question 2a: Context fields**
+```python
+{
+    "question": "Which CONTEXT fields do you need? (what/who is being studied)",
+    "header": "Context",
+    "options": [
+        {"label": "Population", "description": "Group or entities being studied"},
+        {"label": "Sample", "description": "Specific subset or participants"},
+        {"label": "Setting", "description": "Environment or location"},
+        {"label": "Domain", "description": "Field or application area"}
+    ],
+    "multiSelect": True
+}
+```
+
+**Question 2b: Action fields**
+```python
+{
+    "question": "Which ACTION fields do you need? (what is being done/studied)",
+    "header": "Action",
+    "options": [
+        {"label": "Intervention", "description": "Treatment or method applied"},
+        {"label": "Method", "description": "Technique or algorithm"},
+        {"label": "Phenomenon", "description": "Experience or behavior of interest"},
+        {"label": "Mechanism", "description": "How something works"}
+    ],
+    "multiSelect": True
+}
+```
+
+**Question 2c: Result fields**
+```python
+{
+    "question": "Which RESULT fields do you need? (what is measured/evaluated)",
+    "header": "Result",
+    "options": [
+        {"label": "Outcome", "description": "Effects or results measured"},
+        {"label": "Metrics", "description": "Specific measures used"},
+        {"label": "Evaluation", "description": "Assessment criteria"}
+    ],
+    "multiSelect": True
+}
+```
+
+### Step 3: Framework-Independent Questions
+
+These questions apply to ALL frameworks:
+
+**Question 3: Year range**
 ```python
 {
     "question": "What year range should papers be from?",
@@ -41,7 +128,7 @@ Use AskUserQuestion to gather protocol info. **All questions need 2-4 options.**
 }
 ```
 
-**Question 2: Languages**
+**Question 4: Languages**
 ```python
 {
     "question": "What languages are acceptable?",
@@ -55,7 +142,7 @@ Use AskUserQuestion to gather protocol info. **All questions need 2-4 options.**
 }
 ```
 
-**Question 3: Paper types to exclude**
+**Question 5: Paper types to exclude**
 ```python
 {
     "question": "What types of papers to EXCLUDE?",
@@ -69,7 +156,7 @@ Use AskUserQuestion to gather protocol info. **All questions need 2-4 options.**
 }
 ```
 
-**Question 4: Preprints**
+**Question 6: Preprints**
 ```python
 {
     "question": "How to handle preprints (arXiv, bioRxiv, etc)?",
@@ -83,7 +170,7 @@ Use AskUserQuestion to gather protocol info. **All questions need 2-4 options.**
 }
 ```
 
-**Question 5: Study design**
+**Question 7: Study design**
 ```python
 {
     "question": "What study designs to include?",
@@ -98,7 +185,7 @@ Use AskUserQuestion to gather protocol info. **All questions need 2-4 options.**
 }
 ```
 
-**Question 6: Minimum citations**
+**Question 8: Minimum citations**
 ```python
 {
     "question": "Set a minimum citation threshold?",
@@ -113,7 +200,7 @@ Use AskUserQuestion to gather protocol info. **All questions need 2-4 options.**
 }
 ```
 
-**Question 7: Data/Code availability**
+**Question 9: Data/Code availability**
 ```python
 {
     "question": "Require open data or code?",
@@ -128,7 +215,7 @@ Use AskUserQuestion to gather protocol info. **All questions need 2-4 options.**
 }
 ```
 
-**Question 8-9: Search providers (2 questions, same header)**
+**Question 10-11: Search providers (2 questions, same header)**
 ```python
 {
     "questions": [
@@ -155,7 +242,7 @@ Use AskUserQuestion to gather protocol info. **All questions need 2-4 options.**
 }
 ```
 
-**Question 10: Target pool size**
+**Question 12: Target pool size**
 ```python
 {
     "question": "How many papers do you want to screen?",
@@ -169,7 +256,7 @@ Use AskUserQuestion to gather protocol info. **All questions need 2-4 options.**
 }
 ```
 
-**Question 11: Research question (free text)**
+**Question 13: Research question (free text)**
 ```python
 {
     "question": "Describe your research question:",
@@ -185,11 +272,14 @@ Use AskUserQuestion to gather protocol info. **All questions need 2-4 options.**
 
 ## Create Vault with Protocol
 
-After gathering all information via AskUserQuestion, create the vault:
+After gathering all information via AskUserQuestion, create the vault based on the selected framework:
+
+### For PICO Framework
 
 ```bash
 uvx scimesh vault init {review_path}/ \
   --question "Research question here" \
+  --framework pico \
   --population "Population" \
   --intervention "Intervention" \
   --comparison "Comparison" \
@@ -202,7 +292,39 @@ uvx scimesh vault init {review_path}/ \
   --year-range "2020-2024"
 ```
 
-**Note:** Use `--inclusion` and `--exclusion` multiple times for multiple criteria.
+### For SPIDER Framework
+
+```bash
+uvx scimesh vault init {review_path}/ \
+  --question "Research question here" \
+  --framework spider \
+  --sample "Sample description" \
+  --phenomenon "Phenomenon of interest" \
+  --design "Research design" \
+  --evaluation "Evaluation criteria" \
+  --research-type "qualitative" \
+  --inclusion "First inclusion criterion" \
+  --exclusion "First exclusion criterion" \
+  --databases "arxiv,openalex,semantic_scholar" \
+  --year-range "2020-2024"
+```
+
+### For Custom Framework
+
+```bash
+uvx scimesh vault init {review_path}/ \
+  --question "Research question here" \
+  --framework custom \
+  --field "population:Description of population" \
+  --field "method:Description of method" \
+  --field "outcome:Description of outcome" \
+  --inclusion "First inclusion criterion" \
+  --exclusion "First exclusion criterion" \
+  --databases "arxiv,openalex,semantic_scholar" \
+  --year-range "2020-2024"
+```
+
+**Note:** Use `--inclusion` and `--exclusion` multiple times for multiple criteria. For Custom framework, use `--field` multiple times with the format `fieldname:description`.
 
 ## Directory Structure
 
@@ -225,9 +347,12 @@ The vault creates this structure:
 
 ## Vault File Structure
 
-**index.yaml** - Protocol and stats:
+**index.yaml** - Protocol and stats (structure varies by framework):
+
+### PICO Framework
 ```yaml
 protocol:
+  framework: pico
   question: "Research question here"
   population: ""      # P - Population/Problem
   intervention: ""    # I - Intervention/Exposure
@@ -241,6 +366,61 @@ protocol:
     - arxiv
     - openalex
     - semantic_scholar
+  year_range: "2021-2026"
+
+stats:
+  total: 0
+  included: 0
+  excluded: 0
+  maybe: 0
+  unscreened: 0
+  with_pdf: 0
+```
+
+### SPIDER Framework
+```yaml
+protocol:
+  framework: spider
+  question: "Research question here"
+  sample: ""          # S - Sample
+  phenomenon: ""      # PI - Phenomenon of Interest
+  design: ""          # D - Design
+  evaluation: ""      # E - Evaluation
+  research_type: ""   # R - Research type
+  inclusion:
+    - "criterion 1"
+  exclusion:
+    - "criterion 1"
+  databases:
+    - arxiv
+    - openalex
+  year_range: "2021-2026"
+
+stats:
+  total: 0
+  included: 0
+  excluded: 0
+  maybe: 0
+  unscreened: 0
+  with_pdf: 0
+```
+
+### Custom Framework
+```yaml
+protocol:
+  framework: custom
+  question: "Research question here"
+  fields:
+    population: "Description"
+    method: "Description"
+    outcome: "Description"
+  inclusion:
+    - "criterion 1"
+  exclusion:
+    - "criterion 1"
+  databases:
+    - arxiv
+    - openalex
   year_range: "2021-2026"
 
 stats:
@@ -285,12 +465,16 @@ uvx scimesh vault add-inclusion {review_path}/ "Must use deep learning"
 
 # Add exclusion criteria
 uvx scimesh vault add-exclusion {review_path}/ "Survey papers"
+
+# Add custom fields (for custom framework)
+uvx scimesh vault set {review_path}/ --field "newfield:Description"
 ```
 
 ## Validation
 
 Before proceeding to search (scimesh:searching), verify:
 - [ ] Vault exists with index.yaml
+- [ ] Framework is specified (pico, spider, or custom)
 - [ ] At least 1 inclusion criterion defined
 - [ ] At least 1 exclusion criterion defined
 - [ ] Research question is filled

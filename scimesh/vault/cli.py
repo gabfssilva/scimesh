@@ -12,6 +12,8 @@ import cyclopts
 import yaml
 
 from scimesh.vault.models import (
+    Framework,
+    FrameworkType,
     PaperEntry,
     Protocol,
     ScreeningStatus,
@@ -45,6 +47,15 @@ vault_app = cyclopts.App(
 def vault_init(
     vault_path: Annotated[Path, cyclopts.Parameter(help="Path to create vault")],
     question: Annotated[str, cyclopts.Parameter(name="--question", help="Research question")] = "",
+    framework: Annotated[
+        str, cyclopts.Parameter(name="--framework", help="Framework type: pico, spider, custom")
+    ] = "custom",
+    # Custom framework fields (key:value format, repeatable)
+    field: Annotated[
+        list[str] | None,
+        cyclopts.Parameter(name="--field", help="Custom field in key:value format (repeatable)"),
+    ] = None,
+    # PICO fields
     population: Annotated[
         str, cyclopts.Parameter(name="--population", help="PICO: Population")
     ] = "",
@@ -55,6 +66,19 @@ def vault_init(
         str, cyclopts.Parameter(name="--comparison", help="PICO: Comparison")
     ] = "",
     outcome: Annotated[str, cyclopts.Parameter(name="--outcome", help="PICO: Outcome")] = "",
+    # SPIDER fields
+    sample: Annotated[str, cyclopts.Parameter(name="--sample", help="SPIDER: Sample")] = "",
+    phenomenon: Annotated[
+        str, cyclopts.Parameter(name="--phenomenon", help="SPIDER: Phenomenon of Interest")
+    ] = "",
+    design: Annotated[str, cyclopts.Parameter(name="--design", help="SPIDER: Design")] = "",
+    evaluation: Annotated[
+        str, cyclopts.Parameter(name="--evaluation", help="SPIDER: Evaluation")
+    ] = "",
+    research_type: Annotated[
+        str, cyclopts.Parameter(name="--research-type", help="SPIDER: Research Type")
+    ] = "",
+    # Protocol fields
     inclusion: Annotated[
         list[str] | None,
         cyclopts.Parameter(name="--inclusion", help="Inclusion criteria (repeat for multiple)"),
@@ -71,12 +95,54 @@ def vault_init(
     ] = "",
 ) -> None:
     """Initialize a new SLR vault with protocol."""
+    # Parse framework type
+    try:
+        framework_type = FrameworkType(framework.lower())
+    except ValueError:
+        print(f"Error: Invalid framework type: {framework}", file=sys.stderr)
+        print("Valid options: pico, spider, custom", file=sys.stderr)
+        sys.exit(1)
+
+    # Build fields dict based on framework type
+    fields: dict[str, str] = {}
+
+    if framework_type == FrameworkType.PICO:
+        if population:
+            fields["population"] = population
+        if intervention:
+            fields["intervention"] = intervention
+        if comparison:
+            fields["comparison"] = comparison
+        if outcome:
+            fields["outcome"] = outcome
+    elif framework_type == FrameworkType.SPIDER:
+        if sample:
+            fields["sample"] = sample
+        if phenomenon:
+            fields["phenomenon"] = phenomenon
+        if design:
+            fields["design"] = design
+        if evaluation:
+            fields["evaluation"] = evaluation
+        if research_type:
+            fields["research_type"] = research_type
+    elif framework_type == FrameworkType.CUSTOM:
+        # Parse --field args in key:value format
+        if field:
+            for f in field:
+                if ":" in f:
+                    key, value = f.split(":", 1)
+                    fields[key.strip()] = value.strip()
+                else:
+                    print(f"Warning: Ignoring invalid field format: {f}", file=sys.stderr)
+                    print("Expected format: key:value", file=sys.stderr)
+
+    # Create Framework object
+    framework_obj = Framework(type=framework_type, fields=fields)
+
     protocol = Protocol(
         question=question,
-        population=population,
-        intervention=intervention,
-        comparison=comparison,
-        outcome=outcome,
+        framework=framework_obj,
         inclusion=tuple(inclusion) if inclusion else (),
         exclusion=tuple(exclusion) if exclusion else (),
         databases=tuple(db.strip() for db in databases.split(",")),
@@ -97,16 +163,14 @@ def vault_set(
     question: Annotated[
         str | None, cyclopts.Parameter(name="--question", help="Research question")
     ] = None,
-    population: Annotated[
-        str | None, cyclopts.Parameter(name="--population", help="Population")
+    framework: Annotated[
+        str | None,
+        cyclopts.Parameter(name="--framework", help="Framework type: pico, spider, custom"),
     ] = None,
-    intervention: Annotated[
-        str | None, cyclopts.Parameter(name="--intervention", help="Intervention")
+    field: Annotated[
+        list[str] | None,
+        cyclopts.Parameter(name="--field", help="Field in key:value format (repeatable)"),
     ] = None,
-    comparison: Annotated[
-        str | None, cyclopts.Parameter(name="--comparison", help="Comparison")
-    ] = None,
-    outcome: Annotated[str | None, cyclopts.Parameter(name="--outcome", help="Outcome")] = None,
     year_range: Annotated[
         str | None, cyclopts.Parameter(name="--year-range", help="Year range")
     ] = None,
@@ -121,13 +185,38 @@ def vault_set(
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
+    # Determine framework type
+    if framework is not None:
+        try:
+            framework_type = FrameworkType(framework.lower())
+        except ValueError:
+            print(f"Error: Invalid framework type: {framework}", file=sys.stderr)
+            print("Valid options: pico, spider, custom", file=sys.stderr)
+            sys.exit(1)
+        # New framework type with empty fields
+        new_fields: dict[str, str] = {}
+    else:
+        # Keep existing framework type and fields
+        framework_type = vault.protocol.framework.type
+        new_fields = dict(vault.protocol.framework.fields)
+
+    # Apply --field updates
+    if field:
+        for f in field:
+            if ":" in f:
+                key, value = f.split(":", 1)
+                new_fields[key.strip()] = value.strip()
+            else:
+                print(f"Warning: Ignoring invalid field format: {f}", file=sys.stderr)
+                print("Expected format: key:value", file=sys.stderr)
+
+    # Create new Framework object
+    new_framework = Framework(type=framework_type, fields=new_fields)
+
     # Build updated protocol
     new_protocol = Protocol(
         question=question if question is not None else vault.protocol.question,
-        population=population if population is not None else vault.protocol.population,
-        intervention=intervention if intervention is not None else vault.protocol.intervention,
-        comparison=comparison if comparison is not None else vault.protocol.comparison,
-        outcome=outcome if outcome is not None else vault.protocol.outcome,
+        framework=new_framework,
         inclusion=vault.protocol.inclusion,
         exclusion=vault.protocol.exclusion,
         databases=tuple(db.strip() for db in databases.split(","))
@@ -160,10 +249,7 @@ def vault_add_inclusion(
     new_inclusion = vault.protocol.inclusion + tuple(criteria)
     new_protocol = Protocol(
         question=vault.protocol.question,
-        population=vault.protocol.population,
-        intervention=vault.protocol.intervention,
-        comparison=vault.protocol.comparison,
-        outcome=vault.protocol.outcome,
+        framework=vault.protocol.framework,
         inclusion=new_inclusion,
         exclusion=vault.protocol.exclusion,
         databases=vault.protocol.databases,
@@ -194,10 +280,7 @@ def vault_add_exclusion(
     new_exclusion = vault.protocol.exclusion + tuple(criteria)
     new_protocol = Protocol(
         question=vault.protocol.question,
-        population=vault.protocol.population,
-        intervention=vault.protocol.intervention,
-        comparison=vault.protocol.comparison,
-        outcome=vault.protocol.outcome,
+        framework=vault.protocol.framework,
         inclusion=vault.protocol.inclusion,
         exclusion=new_exclusion,
         databases=vault.protocol.databases,
