@@ -104,12 +104,13 @@ def _create_downloader(
     host_concurrency: str | None = None,
     use_scihub: bool = False,
 ) -> FallbackDownloader:
-    """Create a FallbackDownloader with OpenAccess and optionally SciHub."""
+    """Create a FallbackDownloader with OpenAccess, Playwright, and optionally SciHub."""
     from scimesh.download import (
         Downloader,
         FallbackDownloader,
         HostSemaphores,
         OpenAccessDownloader,
+        PlaywrightDownloader,
         SciHubDownloader,
     )
 
@@ -118,7 +119,10 @@ def _create_downloader(
     if host_limits or default_limit:
         host_semaphores = HostSemaphores(host_limits, default=default_limit)
 
-    downloaders: list[Downloader] = [OpenAccessDownloader(host_semaphores=host_semaphores)]
+    downloaders: list[Downloader] = [
+        OpenAccessDownloader(host_semaphores=host_semaphores),
+        PlaywrightDownloader(host_semaphores=host_semaphores),
+    ]
     if use_scihub:
         downloaders.append(SciHubDownloader(host_semaphores=host_semaphores))
 

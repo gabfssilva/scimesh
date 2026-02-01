@@ -123,24 +123,22 @@ class PlaywrightDownloader(Downloader):
         host_semaphores: HostSemaphores | None = None,
     ):
         super().__init__(host_semaphores=host_semaphores)
-        if not PLAYWRIGHT_AVAILABLE:
-            raise ImportError(
-                "playwright package is required for PlaywrightDownloader. "
-                "Install with: pip install playwright && playwright install chromium"
-            )
         self.email = os.environ.get("UNPAYWALL_EMAIL")
-        if not self.email:
-            raise ValueError(
-                "UNPAYWALL_EMAIL environment variable is required for PlaywrightDownloader"
-            )
         self.config = config or PlaywrightConfig()
         self._playwright: Any = None
         self._browser: Browser | None = None
+        self._available = PLAYWRIGHT_AVAILABLE and bool(self.email)
+
+        if not PLAYWRIGHT_AVAILABLE:
+            logger.debug("  [Playwright] Not available: playwright not installed")
+        elif not self.email:
+            logger.debug("  [Playwright] Not available: UNPAYWALL_EMAIL not set")
 
     async def __aenter__(self) -> Self:
         await super().__aenter__()
-        self._playwright = await async_playwright().start()  # type: ignore[misc]
-        self._browser = await self._launch_browser()
+        if self._available:
+            self._playwright = await async_playwright().start()  # type: ignore[misc]
+            self._browser = await self._launch_browser()
         return self
 
     async def _launch_browser(self) -> Browser:
@@ -242,6 +240,9 @@ class PlaywrightDownloader(Downloader):
             return None
 
     async def download(self, doi: str) -> bytes | None:
+        if not self._available:
+            return None
+
         if self._client is None or self._browser is None:
             raise RuntimeError("Downloader must be used as async context manager")
 
