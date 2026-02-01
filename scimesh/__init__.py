@@ -1,4 +1,3 @@
-# scimesh/__init__.py
 """scimesh - A scientific literature search library."""
 
 from scimesh.exceptions import (
@@ -28,13 +27,11 @@ from scimesh.query import (
 from scimesh.search import OnError, search
 
 __all__ = [
-    # Exceptions
     "SciMeshError",
     "ProviderError",
     "DownloadError",
     "ParseError",
     "CacheError",
-    # Query combinators
     "Query",
     "Field",
     "And",
@@ -49,11 +46,9 @@ __all__ = [
     "fulltext",
     "year",
     "parse",
-    # Models
     "Paper",
     "Author",
     "SearchResult",
-    # Search
     "search",
     "OnError",
 ]

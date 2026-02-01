@@ -1,4 +1,3 @@
-# scimesh/providers/scopus.py
 import logging
 import os
 from collections.abc import AsyncIterator
@@ -30,7 +29,7 @@ class Scopus(Provider):
 
     name = "scopus"
     BASE_URL = "https://api.elsevier.com/content/search/scopus"
-    PAGE_SIZE = 25  # Scopus max per request with COMPLETE view
+    PAGE_SIZE = 25
 
     def _load_from_env(self) -> str | None:
         return os.getenv("SCOPUS_API_KEY")
@@ -68,7 +67,7 @@ class Scopus(Provider):
                     return f"PUBYEAR < {e + 1}"
                 return ""
             case CitationRange():
-                return ""  # Handled client-side
+                return ""
             case _:
                 raise ValueError(f"Unsupported query node: {query}")
 
@@ -83,7 +82,7 @@ class Scopus(Provider):
         if not self._api_key:
             raise ValueError("Scopus requires an API key. Set SCOPUS_API_KEY or pass api_key=")
 
-        client = self._client  # Capture for closure
+        client = self._client
 
         citation_filter = extract_citation_range(query)
         query_without_citations = remove_citation_range(query)
@@ -175,13 +174,11 @@ class Scopus(Provider):
         if not title:
             return None
 
-        # Authors (Scopus returns "dc:creator" for first author only in search)
         authors = []
         creator = entry.get("dc:creator")
         if creator:
             authors.append(Author(name=creator))
 
-        # Year
         year = 0
         cover_date = entry.get("prism:coverDate", "")
         if cover_date:
@@ -190,20 +187,16 @@ class Scopus(Provider):
             except (ValueError, IndexError):
                 pass
 
-        # DOI
         doi = entry.get("prism:doi")
 
-        # URL
         url = None
         for link in entry.get("link", []):
             if link.get("@ref") == "scopus":
                 url = link.get("@href")
                 break
 
-        # Journal
         journal = entry.get("prism:publicationName")
 
-        # Citations
         citations = None
         cited_by = entry.get("citedby-count")
         if cited_by:
@@ -212,7 +205,6 @@ class Scopus(Provider):
             except ValueError:
                 pass
 
-        # Publication date
         pub_date = None
         if cover_date:
             try:
@@ -220,7 +212,6 @@ class Scopus(Provider):
             except ValueError:
                 pass
 
-        # Subject areas as topics
         topics = []
         subject_area = entry.get("subject-area", [])
         if isinstance(subject_area, list):
@@ -228,10 +219,8 @@ class Scopus(Provider):
                 if isinstance(area, dict):
                     topics.append(area.get("$", ""))
 
-        # Open access info
         is_oa = entry.get("openaccessFlag", False)
 
-        # PDF link (if available from open access links)
         pdf_url = None
         for link in entry.get("link", []):
             if link.get("@ref") == "full-text":
@@ -270,14 +259,11 @@ class Scopus(Provider):
         if not self._api_key:
             raise ValueError("Scopus requires an API key. Set SCOPUS_API_KEY or pass api_key=")
 
-        # Determine if this is a DOI or Scopus ID
         if paper_id.startswith("SCOPUS_ID:"):
             query_str = paper_id
         elif "/" in paper_id:
-            # Assume DOI
             query_str = f"DOI({paper_id})"
         else:
-            # Try as Scopus ID
             query_str = f"SCOPUS_ID({paper_id})"
 
         headers = {
@@ -303,7 +289,6 @@ class Scopus(Provider):
         if not results:
             return None
 
-        # Check for error response
         if "error" in results[0]:
             return None
 
@@ -335,12 +320,10 @@ class Scopus(Provider):
         if not self._api_key:
             raise ValueError("Scopus requires an API key. Set SCOPUS_API_KEY or pass api_key=")
 
-        # Scopus only supports citing papers through search
         if direction == "out":
             logger.warning("Scopus does not support fetching references (direction='out')")
             return
 
-        # First get the paper to find its Scopus ID
         paper = await self.get(paper_id)
         if paper is None:
             return
@@ -349,7 +332,6 @@ class Scopus(Provider):
         if not scopus_id:
             return
 
-        # Remove "SCOPUS_ID:" prefix if present
         if scopus_id.startswith("SCOPUS_ID:"):
             scopus_id = scopus_id.replace("SCOPUS_ID:", "")
 
@@ -358,7 +340,6 @@ class Scopus(Provider):
             "Accept": "application/json",
         }
 
-        # Search for papers that cite this one
         params = {
             "query": f"REFEID({scopus_id})",
             "count": min(max_results, 25),

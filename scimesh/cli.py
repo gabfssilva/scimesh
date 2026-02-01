@@ -1,4 +1,3 @@
-# scimesh/cli.py
 from __future__ import annotations
 
 import asyncio
@@ -6,7 +5,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, cast
 
 import cyclopts
 import streamish as st
@@ -18,6 +17,7 @@ from scimesh.export.tree import TreeExporter
 from scimesh.models import Paper, SearchResult, merge_papers
 from scimesh.providers import Arxiv, OpenAlex, Scopus, SemanticScholar
 from scimesh.providers.base import Provider
+from scimesh.search import OnError
 from scimesh.vault.cli import vault_app
 
 if TYPE_CHECKING:
@@ -28,7 +28,6 @@ app = cyclopts.App(
     help="Scientific paper search across multiple providers.",
 )
 
-# Register vault subcommand
 app.command(vault_app)
 
 
@@ -49,7 +48,6 @@ PROVIDERS = {
     "semantic_scholar": SemanticScholar,
 }
 
-# Providers that support the get() method
 GET_PROVIDERS = {
     "arxiv": Arxiv,
     "openalex": OpenAlex,
@@ -57,7 +55,6 @@ GET_PROVIDERS = {
     "semantic_scholar": SemanticScholar,
 }
 
-# Providers that support the citations() method
 CITATIONS_PROVIDERS = {
     "openalex": OpenAlex,
     "scopus": Scopus,
@@ -79,13 +76,11 @@ def _parse_host_concurrency(value: str | None) -> tuple[dict[str, int] | None, i
     if not value:
         return None, None
 
-    # Try parsing as plain integer (default for all hosts)
     try:
         return None, int(value)
     except ValueError:
         pass
 
-    # Parse as host=limit pairs
     result: dict[str, int] = {}
     default: int | None = None
     for part in value.split(","):
@@ -97,7 +92,6 @@ def _parse_host_concurrency(value: str | None) -> tuple[dict[str, int] | None, i
             except ValueError:
                 pass
         else:
-            # Plain number is default
             try:
                 default = int(part)
             except ValueError:
@@ -145,7 +139,7 @@ async def _stream_search(
     stream = do_search(
         query,
         providers=provider_instances,
-        on_error=on_error,  # type: ignore
+        on_error=cast(OnError, on_error),
         dedupe=dedupe,
         stream=True,
     )
@@ -154,7 +148,7 @@ async def _stream_search(
 
     async for paper in stream:
         if count > 0:
-            print()  # Blank line between papers
+            print()
         print(tree_exporter.format_paper(paper))
         count += 1
 
@@ -227,21 +221,17 @@ def search(
     """Search for scientific papers across multiple providers."""
     _setup_logging(log_level)
 
-    # Normalize providers (support comma-separated values)
     providers = [p.strip() for item in providers for p in item.split(",")]
 
-    # Validate providers
     invalid = [p for p in providers if p not in PROVIDERS]
     if invalid:
         print(f"Error: Unknown providers: {invalid}", file=sys.stderr)
         print(f"Available: {list(PROVIDERS.keys())}", file=sys.stderr)
         sys.exit(1)
 
-    # Auto-switch to JSON when piping (for download command compatibility)
     if format == "tree" and output is None and not sys.stdout.isatty():
         format = "json"
 
-    # Special validation for vault format (handled separately below)
     if format == "vault":
         if output is None:
             print("Error: --output is required for vault format", file=sys.stderr)
@@ -250,7 +240,6 @@ def search(
         print(f"Error: Unknown export format: {format}", file=sys.stderr)
         sys.exit(1)
 
-    # Create provider instances
     provider_instances: list[Provider] = []
     downloader = _create_downloader(host_concurrency, scihub) if local_fulltext_indexing else None
 
@@ -260,7 +249,6 @@ def search(
         else:
             provider_instances.append(PROVIDERS[p]())
 
-    # Use streaming for tree format without output file (only in terminal)
     if format == "tree" and output is None:
         count = asyncio.run(
             _stream_search(
@@ -275,11 +263,10 @@ def search(
         print(f"\nTotal: {count} papers", file=sys.stderr)
         return
 
-    # Vault format has special handling
     if format == "vault":
         from scimesh.export.vault import VaultExporter
 
-        assert output is not None  # Validated above
+        assert output is not None
 
         async def _export_vault() -> int:
             downloader = _create_downloader(host_concurrency, scihub)
@@ -287,7 +274,7 @@ def search(
             stream = do_search(
                 query,
                 providers=provider_instances,
-                on_error=on_error,  # type: ignore
+                on_error=cast(OnError, on_error),
                 dedupe=not no_dedupe,
                 stream=True,
             )
@@ -303,7 +290,6 @@ def search(
 
             print(f"\nExporting {len(papers)} papers to {output}/", file=sys.stderr)
 
-            # Use async with to initialize the downloader
             async with downloader:
                 exporter = VaultExporter(downloader=downloader, use_scihub=scihub)
                 stats = await exporter.export_async(
@@ -320,15 +306,13 @@ def search(
         asyncio.run(_export_vault())
         return
 
-    # Get exporter for non-vault formats
     exporter = get_exporter(format)
 
-    # Non-streaming path for other formats or file output
     async def _collect_with_limit() -> SearchResult:
         stream = do_search(
             query,
             providers=provider_instances,
-            on_error=on_error,  # type: ignore
+            on_error=cast(OnError, on_error),
             dedupe=not no_dedupe,
             stream=True,
         )
@@ -344,14 +328,12 @@ def search(
 
     result = asyncio.run(_collect_with_limit())
 
-    # Export results
     if output:
         exporter.export(result, output)
         print(f"Exported {len(result.papers)} papers to {output}")
     else:
         print(exporter.to_string(result))
 
-    # Summary
     print(f"\nTotal: {len(result.papers)} papers", file=sys.stderr)
     for pname, count in result.total_by_provider.items():
         print(f"  {pname}: {count}", file=sys.stderr)
@@ -387,7 +369,6 @@ def _parse_dois_from_stdin() -> list[str]:  # noqa: C901
             if doi:
                 dois.append(doi)
             else:
-                # Try to extract arXiv DOI from URL
                 arxiv_doi = _extract_arxiv_doi_from_url(p.get("url"))
                 if arxiv_doi:
                     dois.append(arxiv_doi)
@@ -425,7 +406,6 @@ async def _run_downloads(
             success_count += 1
         else:
             error_msg = result.error or "not found"
-            # Extract short error message
             if "All downloaders failed" in error_msg:
                 error_msg = "not found"
             print(f"  \u2717 {result.doi} - {error_msg}")
@@ -463,18 +443,14 @@ def download(
     """Download papers by DOI."""
     dois: list[str] = []
 
-    # Determine input source
     if from_file is not None:
-        # Read DOIs from file
         if not from_file.exists():
             print(f"Error: File not found: {from_file}", file=sys.stderr)
             sys.exit(1)
         dois = _parse_dois_from_file(from_file)
     elif doi is not None:
-        # Use positional DOI argument
         dois = [doi]
     elif not sys.stdin.isatty():
-        # Read from stdin (piped JSON)
         dois = _parse_dois_from_stdin()
 
     if not dois:
@@ -484,13 +460,10 @@ def download(
         )
         sys.exit(1)
 
-    # Print header
     print(f"Downloading {len(dois)} papers to {output}/")
 
-    # Run downloads
     success_count, fail_count = asyncio.run(_run_downloads(dois, output, scihub, host_concurrency))
 
-    # Print summary
     total = success_count + fail_count
     print(f"Downloaded: {success_count}/{total} | Failed: {fail_count}")
 
@@ -545,17 +518,14 @@ def get(
     ] = True,
 ) -> None:
     """Fetch a specific paper by DOI or ID."""
-    # Normalize providers (support comma-separated values)
     providers = [p.strip() for item in providers for p in item.split(",")]
 
-    # Validate providers
     invalid = [p for p in providers if p not in GET_PROVIDERS]
     if invalid:
         print(f"Error: Unknown or unsupported providers: {invalid}", file=sys.stderr)
         print(f"Available: {list(GET_PROVIDERS.keys())}", file=sys.stderr)
         sys.exit(1)
 
-    # Validate format (vault not supported for get command)
     if format == "vault":
         print("Error: vault format is not supported for get command", file=sys.stderr)
         sys.exit(1)
@@ -566,7 +536,6 @@ def get(
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Fetch paper from providers
     papers, errors = asyncio.run(_get_paper(paper_id, providers))
 
     if not papers:
@@ -575,13 +544,11 @@ def get(
             print(f"  {pname}: {error}", file=sys.stderr)
         sys.exit(1)
 
-    # Merge results if requested and multiple papers found
     if merge and len(papers) > 1:
         papers = [merge_papers(papers)]
 
     result = SearchResult(papers=papers)
 
-    # Export results
     if output:
         exporter.export(result, output)
         print(f"Exported to {output}")
@@ -592,7 +559,6 @@ def get(
     else:
         print(exporter.to_string(result))
 
-    # Report errors (local to this command, not in SearchResult)
     if errors:
         for pname, error in errors.items():
             print(f"[WARN] {pname}: {error}", file=sys.stderr)
@@ -622,7 +588,6 @@ def index_cmd(
 
     index = FulltextIndex()
 
-    # Find PDF files
     pattern = "**/*.pdf" if recursive else "*.pdf"
     pdf_files = list(directory.glob(pattern))
 
@@ -636,10 +601,8 @@ def index_cmd(
     failed = 0
 
     for pdf_path in pdf_files:
-        # Use filename (without .pdf) as paper ID
         paper_id = pdf_path.stem
 
-        # Extract text
         text = extract_text_from_pdf(pdf_path)
         if text:
             index.add(paper_id, text)
@@ -669,7 +632,7 @@ async def _get_citations(
             async with provider:
                 count = 0
                 stream = provider.citations(paper_id, direction=direction, max_results=max_results)
-                async for paper in stream:  # type: ignore
+                async for paper in stream:
                     papers.append(paper)
                     count += 1
                     if count >= max_results:
@@ -719,23 +682,19 @@ def citations(
     ] = False,
 ) -> None:
     """Get papers citing or cited by a specific paper."""
-    # Validate direction
     if direction not in ("in", "out", "both"):
         print(f"Error: Invalid direction: {direction}", file=sys.stderr)
         print("Valid options: in, out, both", file=sys.stderr)
         sys.exit(1)
 
-    # Normalize providers (support comma-separated values)
     providers = [p.strip() for item in providers for p in item.split(",")]
 
-    # Validate providers
     invalid = [p for p in providers if p not in CITATIONS_PROVIDERS]
     if invalid:
         print(f"Error: Unknown or unsupported providers: {invalid}", file=sys.stderr)
         print(f"Available: {list(CITATIONS_PROVIDERS.keys())}", file=sys.stderr)
         sys.exit(1)
 
-    # Validate format (vault not supported for citations command)
     if format == "vault":
         print("Error: vault format is not supported for citations command", file=sys.stderr)
         sys.exit(1)
@@ -746,7 +705,6 @@ def citations(
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Fetch citations from providers
     papers, errors = asyncio.run(_get_citations(paper_id, providers, direction, max_results))
 
     if not papers and not errors:
@@ -755,11 +713,9 @@ def citations(
 
     result = SearchResult(papers=papers)
 
-    # Dedupe if requested
     if not no_dedupe:
         result = result.dedupe()
 
-    # Export results
     if output:
         exporter.export(result, output)
         print(f"Exported {len(result.papers)} papers to {output}")
@@ -773,7 +729,6 @@ def citations(
     else:
         print(exporter.to_string(result))
 
-    # Report errors
     if errors:
         for pname, error in errors.items():
             print(f"[WARN] {pname}: {error}", file=sys.stderr)

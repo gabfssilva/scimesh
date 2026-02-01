@@ -1,4 +1,3 @@
-# scimesh/providers/arxiv.py
 from __future__ import annotations
 
 import asyncio
@@ -32,7 +31,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# arXiv API namespace
 ATOM_NS = "{http://www.w3.org/2005/Atom}"
 ARXIV_NS = "{http://arxiv.org/schemas/atom}"
 OPENSEARCH_NS = "{http://a9.com/-/spec/opensearch/1.1/}"
@@ -43,12 +41,12 @@ class Arxiv(Provider):
 
     name = "arxiv"
     BASE_URL = "https://export.arxiv.org/api/query"
-    PAGE_SIZE = 100  # arXiv max per request
-    RATE_LIMIT_DELAY = 3.0  # Required delay between requests (seconds)
-    MAX_RESULTS = 30000  # arXiv hard limit
+    PAGE_SIZE = 100
+    RATE_LIMIT_DELAY = 3.0
+    MAX_RESULTS = 30000
 
     def _load_from_env(self) -> str | None:
-        return None  # arXiv doesn't require API key
+        return None
 
     def _translate_query(self, query: Query) -> str:
         """Convert Query AST to arXiv search syntax."""
@@ -82,9 +80,9 @@ class Arxiv(Provider):
             case Not(operand=o):
                 return f"ANDNOT {self._translate_query(o)}"
             case YearRange():
-                return ""  # arXiv doesn't support year filter in query
+                return ""
             case CitationRange():
-                return ""  # arXiv doesn't have citation data
+                return ""
             case _:
                 raise ValueError(f"Unsupported query node: {query}")
 
@@ -129,7 +127,7 @@ class Arxiv(Provider):
         if self._client is None:
             raise RuntimeError("Provider not initialized")
 
-        client = self._client  # Capture for closure
+        client = self._client
 
         query_str = self._translate_query(query)
         logger.debug("Translated query: %s", query_str)
@@ -201,7 +199,6 @@ class Arxiv(Provider):
         for p in papers:
             aid = p.extras.get("arxiv_id")
             if aid:
-                # Remove version suffix (e.g., 1706.03762v5 -> 1706.03762)
                 arxiv_ids.append(aid.split("v")[0] if "v" in aid else aid)
 
         if not arxiv_ids:
@@ -219,10 +216,8 @@ class Arxiv(Provider):
 
         result: dict[str, int] = {}
         for work in data.get("results", []):
-            # Use ids.doi which preserves the original arXiv DOI
             ids = work.get("ids", {})
             doi = ids.get("doi", "").replace("https://doi.org/", "")
-            # Extract arxiv_id from DOI: 10.48550/arXiv.1706.03762 -> 1706.03762
             match = re.search(r"arxiv\.(\d+\.\d+)", doi, re.IGNORECASE)
             if match:
                 arxiv_id = match.group(1)
@@ -278,7 +273,6 @@ class Arxiv(Provider):
 
         title = " ".join(title_el.text.split())
 
-        # Authors
         authors = []
         for author_el in entry.findall(f"{ATOM_NS}author"):
             name_el = author_el.find(f"{ATOM_NS}name")
@@ -291,7 +285,6 @@ class Arxiv(Provider):
                     )
                 )
 
-        # Abstract
         summary_el = entry.find(f"{ATOM_NS}summary")
         abstract = (
             " ".join(summary_el.text.split())
@@ -299,7 +292,6 @@ class Arxiv(Provider):
             else None
         )
 
-        # Published date
         published_el = entry.find(f"{ATOM_NS}published")
         pub_date = None
         year = 0
@@ -310,7 +302,6 @@ class Arxiv(Provider):
             except ValueError:
                 pass
 
-        # URL
         url = None
         for link in entry.findall(f"{ATOM_NS}link"):
             if link.get("type") == "text/html":
@@ -320,11 +311,9 @@ class Arxiv(Provider):
             id_el = entry.find(f"{ATOM_NS}id")
             url = id_el.text if id_el is not None else None
 
-        # DOI
         doi_el = entry.find(f"{ARXIV_NS}doi")
         doi = doi_el.text if doi_el is not None else None
 
-        # Categories as topics
         categories = []
         for cat in entry.findall(f"{ARXIV_NS}primary_category"):
             term = cat.get("term")
@@ -335,16 +324,13 @@ class Arxiv(Provider):
             if term and term not in categories:
                 categories.append(term)
 
-        # arXiv ID in extras
         arxiv_id = None
         id_el = entry.find(f"{ATOM_NS}id")
         if id_el is not None and id_el.text:
             arxiv_id = id_el.text.split("/abs/")[-1]
 
-        # PDF URL (arXiv is always open access)
         pdf_url = None
         if arxiv_id:
-            # Remove version suffix for consistent PDF URL
             base_id = arxiv_id.split("v")[0] if "v" in arxiv_id else arxiv_id
             pdf_url = f"https://arxiv.org/pdf/{base_id}.pdf"
 
@@ -359,7 +345,7 @@ class Arxiv(Provider):
             topics=tuple(categories),
             publication_date=pub_date,
             pdf_url=pdf_url,
-            open_access=True,  # arXiv is always open access
+            open_access=True,
             extras={"arxiv_id": arxiv_id} if arxiv_id else {},
         )
 
@@ -376,7 +362,6 @@ class Arxiv(Provider):
         if self._client is None:
             raise RuntimeError("Provider not initialized. Use 'async with provider:'")
 
-        # Extract arXiv ID from DOI if needed
         arxiv_id = paper_id
         if paper_id.startswith("10.48550/arXiv."):
             arxiv_id = paper_id.replace("10.48550/arXiv.", "")
@@ -391,16 +376,12 @@ class Arxiv(Provider):
 
         root = ET.fromstring(response.text)
 
-        # Check if there are any results
         entries = root.findall(f"{ATOM_NS}entry")
         if not entries:
             return None
 
-        # Parse the first (and should be only) entry
         entry = entries[0]
 
-        # Check for error (arXiv returns an entry even for invalid IDs)
-        # but with "Error" in the title
         title_el = entry.find(f"{ATOM_NS}title")
         if title_el is not None and title_el.text and "Error" in title_el.text:
             return None

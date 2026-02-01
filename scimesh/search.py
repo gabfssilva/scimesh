@@ -1,4 +1,3 @@
-# scimesh/search.py
 import logging
 import warnings
 from collections.abc import AsyncIterator, Coroutine
@@ -39,7 +38,6 @@ async def _search_stream(
                 raise
             elif on_error == "warn":
                 warnings.warn(f"Provider {provider.name} failed: {e}", stacklevel=3)
-            # on_error == "ignore": silently return empty stream
 
     def dedupe_key(paper: Paper) -> str:
         return paper.doi or f"{paper.title.lower()}:{paper.year}"

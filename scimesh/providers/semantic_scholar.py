@@ -1,4 +1,3 @@
-# scimesh/providers/semantic_scholar.py
 from __future__ import annotations
 
 import asyncio
@@ -33,7 +32,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# API fields to request
 API_FIELDS = (
     "paperId,title,abstract,authors,year,citationCount,referenceCount,"
     "venue,publicationDate,openAccessPdf,isOpenAccess,fieldsOfStudy,externalIds"
@@ -45,8 +43,8 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
 
     name = "semantic_scholar"
     BASE_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
-    PAGE_SIZE = 100  # Semantic Scholar max per request
-    MAX_TOTAL_RESULTS = 1000  # Semantic Scholar relevance search limit
+    PAGE_SIZE = 100
+    MAX_TOTAL_RESULTS = 1000
 
     def __init__(
         self,
@@ -82,12 +80,8 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
 
         match query:
             case Field(field="title", value=v):
-                # Semantic Scholar doesn't have field-specific search in basic API
-                # Use quotes for phrase search
                 terms.append(f'"{v}"')
             case Field(field="author", value=v):
-                # Author search is not directly supported in query string
-                # Include as regular terms
                 terms.append(v)
             case Field(field="abstract", value=v):
                 terms.append(v)
@@ -96,7 +90,6 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
             case Field(field="fulltext", value=v):
                 terms.append(v)
             case Field(field="doi", value=v):
-                # DOI search is handled differently but include for now
                 terms.append(v)
             case And(left=l, right=r):
                 ys1, ye1 = self._collect_terms(l, terms)
@@ -104,14 +97,11 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
                 year_start = ys1 or ys2
                 year_end = ye1 or ye2
             case Or(left=l, right=r):
-                # Semantic Scholar basic search doesn't support OR well
-                # Just include both terms
                 left_terms: list[str] = []
                 right_terms: list[str] = []
                 ys1, ye1 = self._collect_terms(l, left_terms)
                 ys2, ye2 = self._collect_terms(r, right_terms)
                 if left_terms and right_terms:
-                    # Use | for OR in the query
                     terms.append(f"({' '.join(left_terms)} | {' '.join(right_terms)})")
                 elif left_terms:
                     terms.extend(left_terms)
@@ -120,7 +110,6 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
                 year_start = ys1 or ys2
                 year_end = ye1 or ye2
             case Not(operand=o):
-                # Semantic Scholar supports - for exclusion
                 neg_terms: list[str] = []
                 ys, ye = self._collect_terms(o, neg_terms)
                 for term in neg_terms:
@@ -131,7 +120,7 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
                 year_start = s
                 year_end = e
             case CitationRange():
-                pass  # Handled separately in _search_api
+                pass
 
         return year_start, year_end
 
@@ -143,7 +132,6 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
         if self._client is None:
             raise RuntimeError("Provider not initialized. Use 'async with provider:'")
 
-        # Use local fulltext fallback for fulltext queries
         if has_fulltext(query):
             async for paper in self._search_with_fulltext_filter(query):
                 yield paper
@@ -178,7 +166,7 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
                             max_retries,
                         )
                         await asyncio.sleep(retry_delay)
-                        retry_delay *= 2  # Exponential backoff
+                        retry_delay *= 2
                         continue
                     else:
                         logger.error("Rate limited after %d attempts", max_retries)
@@ -280,44 +268,34 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
         if not title:
             return None
 
-        # Authors with affiliations
         authors = []
         for author_data in paper_data.get("authors", []):
             name = author_data.get("name")
             if name:
-                # Semantic Scholar doesn't provide affiliations in basic search
                 authors.append(Author(name=name))
 
-        # Year
         year = paper_data.get("year") or 0
 
-        # Abstract
         abstract = paper_data.get("abstract")
 
-        # DOI from externalIds
         doi = None
         external_ids = paper_data.get("externalIds", {}) or {}
         if external_ids:
             doi = external_ids.get("DOI")
 
-        # URL - construct from paperId
         paper_id = paper_data.get("paperId")
         url = f"https://www.semanticscholar.org/paper/{paper_id}" if paper_id else None
 
-        # Topics from fieldsOfStudy
         topics = []
         fields_of_study = paper_data.get("fieldsOfStudy") or []
         for field in fields_of_study[:5]:
             if field:
                 topics.append(field)
 
-        # Citations count
         citations_count = paper_data.get("citationCount")
 
-        # References count
         references_count = paper_data.get("referenceCount")
 
-        # Publication date
         pub_date = None
         pub_date_str = paper_data.get("publicationDate")
         if pub_date_str:
@@ -326,13 +304,10 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
             except ValueError:
                 pass
 
-        # Journal/venue
         journal = paper_data.get("venue")
 
-        # Open access info
         is_oa = paper_data.get("isOpenAccess", False)
 
-        # PDF URL from openAccessPdf
         pdf_url = None
         oa_pdf = paper_data.get("openAccessPdf")
         if oa_pdf and isinstance(oa_pdf, dict):
@@ -369,11 +344,8 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
         if self._client is None:
             raise RuntimeError("Provider not initialized. Use 'async with provider:'")
 
-        # Semantic Scholar accepts DOI or paper ID directly
-        # For DOI, we can search with DOI: prefix or just use the paper endpoint
         base_url = "https://api.semanticscholar.org/graph/v1/paper"
 
-        # If it looks like a DOI (contains /), use DOI: prefix
         if "/" in paper_id and not paper_id.startswith("DOI:"):
             lookup_id = f"DOI:{paper_id}"
         else:
@@ -387,7 +359,6 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
 
         logger.debug("Fetching: %s", url)
 
-        # Retry logic for rate limiting
         max_retries = 3
         retry_delay = 1.0
 
@@ -441,7 +412,6 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
         if self._client is None:
             raise RuntimeError("Provider not initialized. Use 'async with provider:'")
 
-        # First get the paper to find its Semantic Scholar ID
         paper = await self.get(paper_id)
         if paper is None:
             return
@@ -457,7 +427,6 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
 
         count = 0
 
-        # Get citing papers (papers that cite this one)
         if direction in ("in", "both"):
             url = f"{base_url}/{s2_id}/citations?fields={API_FIELDS}&limit={min(max_results, 1000)}"
             logger.debug("Fetching citations: %s", url)
@@ -474,7 +443,6 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
                         yield parsed
                         count += 1
 
-        # Get referenced papers (papers cited by this one)
         if direction in ("out", "both"):
             limit = min(max_results, 1000)
             url = f"{base_url}/{s2_id}/references?fields={API_FIELDS}&limit={limit}"

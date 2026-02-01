@@ -1,4 +1,3 @@
-# scimesh/download/__init__.py
 import logging
 import re
 from collections.abc import AsyncIterator, Iterable
@@ -25,7 +24,7 @@ class DownloadResult:
     doi: str
     success: bool
     filename: str | None = None
-    source: str | None = None  # "open_access" | "scihub"
+    source: str | None = None
     error: str | None = None
 
 
@@ -44,10 +43,8 @@ def make_filename(doi: str) -> str:
         >>> make_filename("10.1234/paper.v1")
         '10.1234_paper.v1'
     """
-    # Replace / with _
     filename = doi.replace("/", "_")
 
-    # Replace other invalid characters: \ : * ? " < > |
     invalid_chars = r'[\\:*?"<>|]'
     filename = re.sub(invalid_chars, "_", filename)
 
@@ -116,11 +113,9 @@ async def _download_single(
     filename = make_filename(doi) + ".pdf"
     filepath = output_dir / filename
 
-    # Check cache first
     if cache is not None:
         cached_path = cache.get_pdf_path(doi)
         if cached_path is not None:
-            # Copy from cache to output directory
             pdf_bytes = cached_path.read_bytes()
             filepath.write_bytes(pdf_bytes)
             return DownloadResult(
@@ -136,7 +131,6 @@ async def _download_single(
                 pdf_bytes = await downloader.download(doi)
                 if pdf_bytes is not None:
                     filepath.write_bytes(pdf_bytes)
-                    # Save to cache after successful download
                     if cache is not None:
                         cache.save_pdf(doi, pdf_bytes)
                     return DownloadResult(
