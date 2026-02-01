@@ -1,4 +1,3 @@
-# scimesh/download/throttle.py
 """Per-host concurrency control for downloaders."""
 
 from __future__ import annotations
@@ -16,20 +15,20 @@ class HostSemaphores:
     are made to each host, regardless of which downloader is making the request.
 
     Example:
-        >>> # Default limit for all hosts
+        >>>
         >>> semaphores = HostSemaphores(default=3)
         >>>
-        >>> # Per-host limits
+        >>>
         >>> semaphores = HostSemaphores({
-        ...     "arxiv.org": 2,       # max 2 concurrent to arXiv
-        ...     "api.unpaywall.org": 3,  # max 3 concurrent to Unpaywall
-        ...     "sci-hub.se": 2,      # max 2 concurrent to Sci-Hub
+        ...     "arxiv.org": 2,
+        ...     "api.unpaywall.org": 3,
+        ...     "sci-hub.se": 2,
         ... })
         >>>
-        >>> # Both: default with per-host overrides
+        >>>
         >>> semaphores = HostSemaphores({"arxiv.org": 2}, default=5)
         >>>
-        >>> # Multiple downloaders can share the same semaphores
+        >>>
         >>> open_access = OpenAccessDownloader(host_semaphores=semaphores)
         >>> scihub = SciHubDownloader(host_semaphores=semaphores)
     """
@@ -52,7 +51,7 @@ class HostSemaphores:
 
     def _get_semaphore(self, host: str) -> asyncio.Semaphore | None:
         """Get or create semaphore for a host."""
-        # Check explicit limit first, then default
+
         limit = self._limits.get(host) or self._default
         if limit is None:
             return None
@@ -118,5 +117,5 @@ class HostSemaphores:
             limit: The maximum concurrent requests.
         """
         self._limits[host] = limit
-        # Clear existing semaphore so it gets recreated with new limit
+
         self._semaphores.pop(host, None)

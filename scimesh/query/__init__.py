@@ -1,4 +1,3 @@
-# scimesh/query/__init__.py
 """Query module for building search queries."""
 
 from scimesh.query.combinators import (

@@ -1,4 +1,3 @@
-# scimesh/export/__init__.py
 from .base import Exporter
 from .bibtex import BibtexExporter
 from .csv import CsvExporter

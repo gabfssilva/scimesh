@@ -1,4 +1,3 @@
-# scimesh/download/fallback.py
 """Fallback-aware downloader that tries multiple downloaders in order."""
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ class FallbackDownloader(Downloader):
     """Downloader that tries multiple downloaders in order until one succeeds.
 
     Example:
-        >>> # Share per-host semaphores across all downloaders
+        >>>
         >>> semaphores = HostSemaphores({
         ...     "arxiv.org": 2,
         ...     "api.unpaywall.org": 3,

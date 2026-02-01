@@ -1,4 +1,3 @@
-# scimesh/download/openaccess.py
 """Open Access downloader using Unpaywall API."""
 
 from __future__ import annotations
@@ -95,7 +94,6 @@ class OpenAccessDownloader(Downloader):
             raise RuntimeError("Downloader must be used as async context manager")
 
         try:
-            # Try Unpaywall first
             unpaywall_url = self._unpaywall_url(doi)
             response = await self._get(unpaywall_url)
 
@@ -107,7 +105,6 @@ class OpenAccessDownloader(Downloader):
 
                 oa_locations = data.get("oa_locations", [])
 
-                # Try each OA location
                 for location in oa_locations:
                     pdf_url = location.get("url_for_pdf")
                     if pdf_url:
@@ -115,7 +112,6 @@ class OpenAccessDownloader(Downloader):
                         if pdf_response.status_code == 200:
                             return pdf_response.content
 
-            # Fallback: try direct arXiv URL for arXiv DOIs
             arxiv_id = self._extract_arxiv_id(doi)
             if arxiv_id:
                 arxiv_url = self._arxiv_pdf_url(arxiv_id)

@@ -1,4 +1,3 @@
-# scimesh/throttle.py
 """Async throttle decorator for rate-limiting function calls."""
 
 import asyncio
@@ -29,14 +28,13 @@ def throttle(
         period: Minimum time (in seconds) between consecutive calls.
 
     Example:
-        @throttle(calls=1, period=2.0)  # max 1 call per 2s
+        @throttle(calls=1, period=2.0)
         async def fetch(url): ...
     """
 
     def decorator(
         func: Callable[P, CoroutineType[Any, Any, R]],
     ) -> Callable[P, CoroutineType[Any, Any, R]]:
-        # State is per-decorated-function (closure over these variables)
         semaphore = asyncio.Semaphore(calls)
         lock = asyncio.Lock()
         last_call_time: float = 0.0
@@ -46,7 +44,6 @@ def throttle(
             nonlocal last_call_time
 
             async with semaphore:
-                # Enforce minimum interval between calls
                 async with lock:
                     now = time.monotonic()
                     elapsed = now - last_call_time

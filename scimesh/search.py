@@ -107,10 +107,10 @@ def search(
         If stream=True: AsyncIterator yielding Paper objects
 
     Examples:
-        # Batch mode (default)
+
         result = await search(query, providers)
 
-        # Streaming mode
+
         async for paper in search(query, providers, stream=True):
             print(paper.title)
     """

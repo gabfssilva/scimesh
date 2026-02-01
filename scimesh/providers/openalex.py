@@ -24,7 +24,7 @@ class OpenAlex(Provider):
         self._mailto = mailto
 
     def _load_from_env(self) -> str | None:
-        return None  # OpenAlex doesn't require API key
+        return None
 
     def _build_params(self, query: Query) -> tuple[str, str]:
         """Convert Query AST to OpenAlex search and filter params.
@@ -46,17 +46,14 @@ class OpenAlex(Provider):
         """
         filters: list[str] = []
 
-        # Split query by top-level AND to identify OR groups
         and_groups = self._split_by_and(query)
 
         or_groups: list[list[str]] = []
         for group in and_groups:
-            # Collect search terms from this OR group
             terms = self._collect_or_terms(group)
             if terms:
                 or_groups.append(terms)
 
-            # Collect filters from this group
             self._collect_filters(group, filters)
 
         return (or_groups, filters)
@@ -102,16 +99,14 @@ class OpenAlex(Provider):
                     seen.add(v)
                     terms.append(v)
             case Or(left=l, right=r):
-                # Check for TITLE-ABS pattern (handled as filter)
                 if not self._is_title_abs_pattern(query):
                     self._collect_terms_recursive(l, terms, seen)
                     self._collect_terms_recursive(r, terms, seen)
             case And(left=l, right=r):
-                # AND inside an OR group - collect from both sides
                 self._collect_terms_recursive(l, terms, seen)
                 self._collect_terms_recursive(r, terms, seen)
             case _:
-                pass  # title, abstract, filters, year ranges, etc. handled separately
+                pass
 
     def _is_title_abs_pattern(self, query: Query) -> bool:
         """Check if query is Or(Field(title, v), Field(abstract, v)) pattern."""
@@ -152,17 +147,14 @@ class OpenAlex(Provider):
             case Field(field="doi", value=v):
                 filters.append(f"doi:{v}")
             case Or(left=l, right=r):
-                # Check for TITLE-ABS pattern: Or(Field(title, v), Field(abstract, v))
                 title_abs_value = self._get_title_abs_value(query)
                 if title_abs_value is not None:
                     filters.append(f"title_and_abstract.search:{title_abs_value}")
                 else:
-                    # For OR, try to combine same-type filters with pipe
                     or_filter = self._build_or_filter(query)
                     if or_filter:
                         filters.append(or_filter)
                     else:
-                        # Fallback: collect separately (may not produce correct OR semantics)
                         self._collect_filters(l, filters)
                         self._collect_filters(r, filters)
             case And(left=l, right=r):
@@ -184,13 +176,12 @@ class OpenAlex(Provider):
                 elif e:
                     filters.append(f"publication_year:<{e + 1}")
             case CitationRange(min=min_val, max=max_val):
-                # OpenAlex uses > and < only, not >= or <=
                 if min_val is not None:
                     filters.append(f"cited_by_count:>{min_val - 1}")
                 if max_val is not None:
                     filters.append(f"cited_by_count:<{max_val + 1}")
             case _:
-                pass  # keyword handled as search terms
+                pass
 
     def _build_or_filter(self, query: Query) -> str | None:
         """Build an OR filter expression using pipe syntax.
@@ -200,28 +191,24 @@ class OpenAlex(Provider):
         Returns filter string like "title.search:term1|term2" or None
         if the OR cannot be represented as a single filter type.
         """
-        # First check for OR of TITLE-ABS patterns
+
         title_abs_values = self._collect_or_title_abs_values(query)
         if title_abs_values:
-            # OpenAlex OR syntax: filter:value1|value2
             return f"title_and_abstract.search:{'|'.join(title_abs_values)}"
 
-        # Collect all Field nodes from the OR tree
         fields = self._collect_or_fields(query)
         if not fields:
             return None
 
-        # Check if all fields are the same type (e.g., all title)
         field_types = {f.field for f in fields}
         if len(field_types) != 1:
-            return None  # Mixed field types, cannot combine
+            return None
 
         field_type = field_types.pop()
         filter_name = self._field_to_filter_name(field_type)
         if filter_name is None:
             return None
 
-        # Build OR expression: filter_name:value1|value2
         values = [f.value for f in fields]
         return f"{filter_name}:{'|'.join(values)}"
 
@@ -229,11 +216,10 @@ class OpenAlex(Provider):
         """Collect values from OR tree where each leaf is a TITLE-ABS pattern."""
         match query:
             case Or(left=l, right=r):
-                # Check if this is a TITLE-ABS pattern itself
                 title_abs_value = self._get_title_abs_value(query)
                 if title_abs_value is not None:
                     return [title_abs_value]
-                # Otherwise recurse
+
                 left_vals = self._collect_or_title_abs_values(l)
                 right_vals = self._collect_or_title_abs_values(r)
                 if left_vals and right_vals:
@@ -263,7 +249,7 @@ class OpenAlex(Provider):
         }
         return mapping.get(field_type)
 
-    MAX_OR_TERMS = 10  # OpenAlex limit
+    MAX_OR_TERMS = 10
 
     async def search(
         self,
@@ -282,12 +268,10 @@ class OpenAlex(Provider):
         logger.debug("Filters: %s", filter_str)
 
         if total_ors <= self.MAX_OR_TERMS:
-            # Single query - under the limit
             search_str = self._format_search_groups(or_groups)
             async for paper in self._execute_search(search_str, filter_str):
                 yield paper
         else:
-            # Need to split the query into multiple requests
             logger.debug("Splitting query due to OR limit")
             seen_ids: set[str] = set()
             async for paper in self._search_split(or_groups, filter_str, seen_ids):
@@ -298,7 +282,7 @@ class OpenAlex(Provider):
         if self._client is None:
             raise RuntimeError("Provider not initialized")
 
-        client = self._client  # Capture for closure
+        client = self._client
 
         async def fetch_pages() -> AsyncIterator[dict]:
             cursor: str | None = "*"
@@ -344,7 +328,7 @@ class OpenAlex(Provider):
 
         Strategy: Split the largest OR group into chunks that fit within limit.
         """
-        # Find the largest group (most likely to need splitting)
+
         if not or_groups:
             return
 
@@ -352,11 +336,10 @@ class OpenAlex(Provider):
         largest_group = or_groups[largest_idx]
         other_groups = [g for i, g in enumerate(or_groups) if i != largest_idx]
 
-        # Calculate how many ORs we have from other groups
         other_ors = self._count_total_ors(other_groups)
-        # How many ORs can we use for the largest group per request?
+
         available_ors = self.MAX_OR_TERMS - other_ors
-        # Each OR connects 2 terms, so available_ors ORs = available_ors + 1 terms
+
         chunk_size = max(1, available_ors + 1)
 
         logger.debug(
@@ -365,7 +348,6 @@ class OpenAlex(Provider):
             chunk_size,
         )
 
-        # Split largest group into chunks
         for i in range(0, len(largest_group), chunk_size):
             chunk = largest_group[i : i + chunk_size]
             chunk_groups = other_groups + [chunk]
@@ -374,7 +356,6 @@ class OpenAlex(Provider):
             logger.debug("Chunk search: %s", search_str)
 
             async for paper in self._execute_search(search_str, filter_str):
-                # Deduplicate across chunks
                 paper_id = paper.extras.get("openalex_id", paper.doi or paper.title)
                 if paper_id and paper_id not in seen_ids:
                     seen_ids.add(paper_id)
@@ -386,7 +367,6 @@ class OpenAlex(Provider):
         if not title:
             return None
 
-        # Authors
         authors = []
         for authorship in work.get("authorships", []):
             author_data = authorship.get("author", {})
@@ -399,34 +379,27 @@ class OpenAlex(Provider):
                     orcid = orcid.replace("https://orcid.org/", "")
                 authors.append(Author(name=name, affiliation=affiliation, orcid=orcid))
 
-        # Year
         year = work.get("publication_year", 0)
 
-        # Abstract (OpenAlex returns inverted index, need to reconstruct)
         abstract = None
         abstract_index = work.get("abstract_inverted_index")
         if abstract_index:
             abstract = self._reconstruct_abstract(abstract_index)
 
-        # DOI
         doi = work.get("doi")
         if doi:
             doi = doi.replace("https://doi.org/", "")
 
-        # URL
         url = work.get("primary_location", {}).get("landing_page_url") or work.get("id")
 
-        # Topics/concepts
         topics = []
         for concept in work.get("concepts", [])[:5]:
             name = concept.get("display_name")
             if name:
                 topics.append(name)
 
-        # Citations
         citations = work.get("cited_by_count")
 
-        # Publication date
         pub_date = None
         pub_date_str = work.get("publication_date")
         if pub_date_str:
@@ -435,18 +408,15 @@ class OpenAlex(Provider):
             except ValueError:
                 pass
 
-        # Journal
         journal = None
         source = work.get("primary_location", {}).get("source")
         if source:
             journal = source.get("display_name")
 
-        # Open access info
         open_access_info = work.get("open_access", {})
         is_oa = open_access_info.get("is_oa", False)
         pdf_url = open_access_info.get("oa_url")
 
-        # References count
         references_count = work.get("referenced_works_count")
 
         return Paper(
@@ -489,11 +459,9 @@ class OpenAlex(Provider):
         if self._client is None:
             raise RuntimeError("Provider not initialized. Use 'async with provider:'")
 
-        # Determine if this is a DOI or OpenAlex ID
         if paper_id.startswith("W") or paper_id.startswith("https://openalex.org/"):
             url = f"https://api.openalex.org/works/{paper_id}"
         else:
-            # Assume it's a DOI
             doi = paper_id
             if not doi.startswith("https://doi.org/"):
                 doi = f"https://doi.org/{doi}"
@@ -536,7 +504,6 @@ class OpenAlex(Provider):
         if self._client is None:
             raise RuntimeError("Provider not initialized. Use 'async with provider:'")
 
-        # First, get the OpenAlex ID for this paper
         paper = await self.get(paper_id)
         if paper is None:
             return
@@ -545,7 +512,6 @@ class OpenAlex(Provider):
         if not openalex_id:
             return
 
-        # Extract the work ID from the OpenAlex URL
         work_id = openalex_id.split("/")[-1]
 
         params: dict[str, str | int] = {
@@ -556,7 +522,6 @@ class OpenAlex(Provider):
 
         count = 0
 
-        # Get citing papers (papers that cite this one)
         if direction in ("in", "both"):
             params["filter"] = f"cites:{work_id}"
             url = f"{self.BASE_URL}?{urlencode(params)}"
@@ -574,7 +539,6 @@ class OpenAlex(Provider):
                     yield parsed
                     count += 1
 
-        # Get referenced papers (papers cited by this one)
         if direction in ("out", "both"):
             params["filter"] = f"cited_by:{work_id}"
             url = f"{self.BASE_URL}?{urlencode(params)}"

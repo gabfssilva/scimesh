@@ -1,4 +1,3 @@
-# scimesh/export/csv.py
 import csv
 from io import StringIO
 

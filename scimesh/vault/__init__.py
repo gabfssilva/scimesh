@@ -1,4 +1,3 @@
-# scimesh/vault/__init__.py
 """Vault module for systematic literature review management."""
 
 from scimesh.vault.models import (

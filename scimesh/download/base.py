@@ -1,4 +1,3 @@
-# scimesh/download/base.py
 """Base class for paper downloaders."""
 
 from __future__ import annotations
@@ -25,7 +24,7 @@ class Downloader(ABC):
         ... })
         >>> open_access = OpenAccessDownloader(host_semaphores=semaphores)
         >>> scihub = SciHubDownloader(host_semaphores=semaphores)
-        >>> # Both share the same semaphores - arXiv limited to 2 concurrent
+        >>>
     """
 
     name: str

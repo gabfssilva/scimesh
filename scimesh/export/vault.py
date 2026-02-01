@@ -1,4 +1,3 @@
-# scimesh/export/vault.py
 """Vault exporter for Obsidian-compatible folder structure."""
 
 from __future__ import annotations
@@ -41,16 +40,15 @@ def generate_paper_slug(paper: Paper, max_slug_words: int = 6) -> str:
     Returns:
         A filesystem-safe slug like "vaswani-attention-is-all-you".
     """
-    # Extract first author's surname
+
     if paper.authors:
         first_author = paper.authors[0].name
-        # Take last word as surname (handles "First Last" and "Last, First")
+
         surname = first_author.split()[-1] if " " in first_author else first_author
         surname = _slugify(surname)
     else:
         surname = "unknown"
 
-    # Create title slug
     title_slug = _slugify(paper.title)
     words = title_slug.split("-")
     truncated_slug = "-".join(words[:max_slug_words])
@@ -84,23 +82,18 @@ def _slugify(text: str) -> str:
 
     Removes accents, special characters, and normalizes whitespace.
     """
-    # Remove apostrophes first (they shouldn't become hyphens)
+
     text = text.replace("'", "")
 
-    # Normalize unicode (remove accents)
     text = unicodedata.normalize("NFKD", text)
     text = text.encode("ascii", "ignore").decode("ascii")
 
-    # Lowercase
     text = text.lower()
 
-    # Replace non-alphanumeric with hyphens
     text = re.sub(r"[^a-z0-9]+", "-", text)
 
-    # Remove leading/trailing hyphens
     text = text.strip("-")
 
-    # Collapse multiple hyphens
     text = re.sub(r"-+", "-", text)
 
     return text
@@ -121,23 +114,21 @@ def build_paper_index(
     Returns:
         YAML string for the paper's index.yaml.
     """
-    # Build sources list
+
     sources = [paper.source]
     if additional_sources:
         sources.extend(additional_sources)
     sources = sorted(set(sources))
 
-    # Build URLs dict
     urls: dict[str, str] = {}
     if paper.url:
         urls[paper.source] = paper.url
-    # Check extras for additional URLs
+
     for key, value in paper.extras.items():
         if key.endswith("_url") and isinstance(value, str):
             source_name = key.replace("_url", "")
             urls[source_name] = value
 
-    # Build data dict (only include non-None fields)
     data: dict[str, object] = {
         "title": paper.title,
         "authors": [a.name for a in paper.authors],
@@ -201,7 +192,6 @@ def build_root_index(
     now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
     if existing_data is None:
-        # New vault
         data = {
             "query": query,
             "providers": providers,
@@ -216,12 +206,10 @@ def build_root_index(
             "papers": papers,
         }
     else:
-        # Update existing vault
         existing_stats = existing_data.get("stats", {})
         existing_papers = existing_data.get("papers", [])
         existing_paths = {p["path"] for p in existing_papers}
 
-        # Merge stats
         merged_by_provider = dict(existing_stats.get("by_provider", {}))
         for prov, count in stats.by_provider.items():
             merged_by_provider[prov] = merged_by_provider.get(prov, 0) + count
@@ -234,13 +222,11 @@ def build_root_index(
             "skipped": existing_stats.get("skipped", 0) + stats.skipped,
         }
 
-        # Merge papers (avoid duplicates by path)
         merged_papers = list(existing_papers)
         for paper in papers:
             if paper["path"] not in existing_paths:
                 merged_papers.append(paper)
 
-        # Merge providers
         merged_providers = list(existing_data.get("providers", []))
         for prov in providers:
             if prov not in merged_providers:
@@ -296,7 +282,6 @@ class VaultExporter:
 
         stats = VaultStats()
 
-        # Get existing paper paths from papers.yaml to check for skips
         existing_paths: set[str] = set()
         papers_yaml_path = output_dir / "papers.yaml"
         if papers_yaml_path.exists():
@@ -307,19 +292,15 @@ class VaultExporter:
         for paper in result.papers:
             paper_dir, relative_path = get_paper_path(paper, output_dir)
 
-            # Skip if already exists
             if paper_dir.exists() or relative_path in existing_paths:
                 stats.skipped += 1
                 logger.debug("Skipping existing: %s", relative_path)
                 continue
 
-            # Create paper folder
             paper_dir.mkdir(parents=True, exist_ok=True)
 
-            # Download PDF if possible (placeholder - async handled in CLI)
             pdf_filename: str | None = None
 
-            # Write paper index.yaml
             paper_index = build_paper_index(paper, pdf_filename)
             (paper_dir / "index.yaml").write_text(paper_index, encoding="utf-8")
 
@@ -348,7 +329,6 @@ class VaultExporter:
 
         stats = VaultStats()
 
-        # Get existing paper paths from papers.yaml to check for skips
         existing_paths: set[str] = set()
         papers_yaml_path = output_dir / "papers.yaml"
         if papers_yaml_path.exists():
@@ -356,7 +336,6 @@ class VaultExporter:
             if papers_data:
                 existing_paths = {p["path"] for p in papers_data}
 
-        # Filter papers to export (skip existing)
         papers_to_export: list[tuple[Paper, str, Path]] = []
         for paper in result.papers:
             paper_dir, relative_path = get_paper_path(paper, output_dir)
@@ -368,7 +347,6 @@ class VaultExporter:
 
             papers_to_export.append((paper, relative_path, paper_dir))
 
-        # Download PDFs concurrently
         semaphore = asyncio.Semaphore(self.max_concurrent_downloads)
 
         async def download_pdf(paper: Paper, relative_path: str) -> bytes | None:
@@ -390,13 +368,11 @@ class VaultExporter:
                     logger.info("  [!!] PDF error: %s - %s", relative_path, e)
                 return None
 
-        # Start all downloads concurrently
         download_tasks = [
             download_pdf(paper, relative_path) for paper, relative_path, _ in papers_to_export
         ]
         pdf_results = await asyncio.gather(*download_tasks)
 
-        # Write papers to disk (sequential to avoid I/O contention)
         for (paper, relative_path, paper_dir), pdf_bytes in zip(
             papers_to_export, pdf_results, strict=True
         ):
@@ -409,7 +385,6 @@ class VaultExporter:
                 pdf_filename = "fulltext.pdf"
                 stats.with_pdf += 1
 
-            # Write paper index.yaml
             paper_index = build_paper_index(paper, pdf_filename)
             (paper_dir / "index.yaml").write_text(paper_index, encoding="utf-8")
 

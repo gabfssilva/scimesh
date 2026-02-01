@@ -1,4 +1,3 @@
-# scimesh/vault/cli.py
 """CLI commands for vault management."""
 
 from __future__ import annotations
@@ -50,12 +49,10 @@ def vault_init(
     framework: Annotated[
         str, cyclopts.Parameter(name="--framework", help="Framework type: pico, spider, custom")
     ] = "custom",
-    # Custom framework fields (key:value format, repeatable)
     field: Annotated[
         list[str] | None,
         cyclopts.Parameter(name="--field", help="Custom field in key:value format (repeatable)"),
     ] = None,
-    # PICO fields
     population: Annotated[
         str, cyclopts.Parameter(name="--population", help="PICO: Population")
     ] = "",
@@ -66,7 +63,6 @@ def vault_init(
         str, cyclopts.Parameter(name="--comparison", help="PICO: Comparison")
     ] = "",
     outcome: Annotated[str, cyclopts.Parameter(name="--outcome", help="PICO: Outcome")] = "",
-    # SPIDER fields
     sample: Annotated[str, cyclopts.Parameter(name="--sample", help="SPIDER: Sample")] = "",
     phenomenon: Annotated[
         str, cyclopts.Parameter(name="--phenomenon", help="SPIDER: Phenomenon of Interest")
@@ -78,7 +74,6 @@ def vault_init(
     research_type: Annotated[
         str, cyclopts.Parameter(name="--research-type", help="SPIDER: Research Type")
     ] = "",
-    # Protocol fields
     inclusion: Annotated[
         list[str] | None,
         cyclopts.Parameter(name="--inclusion", help="Inclusion criteria (repeat for multiple)"),
@@ -95,7 +90,7 @@ def vault_init(
     ] = "",
 ) -> None:
     """Initialize a new SLR vault with protocol."""
-    # Parse framework type
+
     try:
         framework_type = FrameworkType(framework.lower())
     except ValueError:
@@ -103,7 +98,6 @@ def vault_init(
         print("Valid options: pico, spider, custom", file=sys.stderr)
         sys.exit(1)
 
-    # Build fields dict based on framework type
     fields: dict[str, str] = {}
 
     if framework_type == FrameworkType.PICO:
@@ -127,7 +121,6 @@ def vault_init(
         if research_type:
             fields["research_type"] = research_type
     elif framework_type == FrameworkType.CUSTOM:
-        # Parse --field args in key:value format
         if field:
             for f in field:
                 if ":" in f:
@@ -137,7 +130,6 @@ def vault_init(
                     print(f"Warning: Ignoring invalid field format: {f}", file=sys.stderr)
                     print("Expected format: key:value", file=sys.stderr)
 
-    # Create Framework object
     framework_obj = Framework(type=framework_type, fields=fields)
 
     protocol = Protocol(
@@ -185,7 +177,6 @@ def vault_set(
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Determine framework type
     if framework is not None:
         try:
             framework_type = FrameworkType(framework.lower())
@@ -193,14 +184,12 @@ def vault_set(
             print(f"Error: Invalid framework type: {framework}", file=sys.stderr)
             print("Valid options: pico, spider, custom", file=sys.stderr)
             sys.exit(1)
-        # New framework type with empty fields
+
         new_fields: dict[str, str] = {}
     else:
-        # Keep existing framework type and fields
         framework_type = vault.protocol.framework.type
         new_fields = dict(vault.protocol.framework.fields)
 
-    # Apply --field updates
     if field:
         for f in field:
             if ":" in f:
@@ -210,10 +199,8 @@ def vault_set(
                 print(f"Warning: Ignoring invalid field format: {f}", file=sys.stderr)
                 print("Expected format: key:value", file=sys.stderr)
 
-    # Create new Framework object
     new_framework = Framework(type=framework_type, fields=new_fields)
 
-    # Build updated protocol
     new_protocol = Protocol(
         question=question if question is not None else vault.protocol.question,
         framework=new_framework,
@@ -316,11 +303,9 @@ def _parse_screening_args(args: list[str]) -> list[tuple[str, str]]:
     while i < len(args):
         arg = args[i]
         if ":" in arg:
-            # Split on first colon
             paper_id, reason = arg.split(":", 1)
             results.append((paper_id.strip(), reason.strip()))
         else:
-            # No colon - check if next arg is the reason
             paper_id = arg
             reason = ""
             results.append((paper_id, reason))
@@ -345,12 +330,11 @@ def vault_screen(
     ] = None,
 ) -> None:
     """Set screening status for papers."""
-    # Verify vault exists
+
     if not (vault_path / "index.yaml").exists():
         print(f"Error: Vault not found: {vault_path}", file=sys.stderr)
         sys.exit(1)
 
-    # Build paper path lookup from papers.yaml
     papers_list = load_papers_index(vault_path)
     paper_paths = {entry.path: entry for entry in papers_list}
 
@@ -361,7 +345,7 @@ def vault_screen(
         nonlocal updated, errors
         for item in _parse_screening_args(papers):
             paper_id, reason = item
-            # Try to find paper by path or partial match
+
             matched_path = None
             for path in paper_paths:
                 if path == paper_id or paper_id in path:
@@ -390,7 +374,6 @@ def vault_screen(
         process_papers(maybe, ScreeningStatus.MAYBE)
 
     if updated > 0:
-        # Update vault stats
         update_vault_stats(vault_path)
 
     print(f"\nUpdated: {updated} | Errors: {errors}")
@@ -411,12 +394,11 @@ def vault_list(
     ] = "table",
 ) -> None:
     """List papers in vault."""
-    # Verify vault exists
+
     if not (vault_path / "index.yaml").exists():
         print(f"Error: Vault not found: {vault_path}", file=sys.stderr)
         sys.exit(1)
 
-    # Load papers from papers.yaml
     papers = load_papers_index(vault_path)
     if status:
         try:
@@ -440,11 +422,9 @@ def vault_list(
         data = [p.to_dict() for p in papers]
         print(json.dumps(data, indent=2))
     else:
-        # Table format
         print(f"{'ID':<40} {'Year':>4} {'Status':<10} Title")
         print("-" * 100)
         for paper in papers:
-            # Extract year from path (format: year-author-slug)
             year = paper.path.split("-")[0] if "-" in paper.path else "?"
             title = paper.title[:45] + "..." if len(paper.title) > 45 else paper.title
             print(f"{paper.path:<40} {year:>4} {paper.status.value:<10} {title}")
@@ -513,12 +493,11 @@ def vault_export(
     ] = None,
 ) -> None:
     """Export papers to various formats."""
-    # Verify vault exists
+
     if not (vault_path / "index.yaml").exists():
         print(f"Error: Vault not found: {vault_path}", file=sys.stderr)
         sys.exit(1)
 
-    # Load papers from papers.yaml
     papers = load_papers_index(vault_path)
     if status:
         try:
@@ -532,7 +511,6 @@ def vault_export(
         print("No papers to export.", file=sys.stderr)
         return
 
-    # Load full paper data
     from scimesh.models import Author, Paper, SearchResult
 
     full_papers: list[Paper] = []
@@ -556,11 +534,9 @@ def vault_export(
 
     result = SearchResult(papers=full_papers)
 
-    # Export
     from scimesh.export import get_exporter
 
     if format in ("yaml", "yml"):
-        # YAML export (not in standard exporters)
         data = [
             {
                 "title": p.title,
@@ -609,7 +585,6 @@ def vault_prisma(
     papers = load_papers_index(vault_path)
     searches = load_searches(vault_path)
 
-    # Build PRISMA flowchart
     flowchart = f"""```mermaid
 flowchart TD
     A[Records identified<br/>n = {stats.total}] --> B[Duplicates removed<br/>n = 0]
@@ -620,7 +595,6 @@ flowchart TD
     E --> G[Included<br/>n = {stats.included}]
 ```"""
 
-    # Build included papers table
     included_papers = [p for p in papers if p.status == ScreeningStatus.INCLUDED]
     included_table = "| Title | Year | DOI |\n|-------|------|-----|\n"
     for paper in included_papers:
@@ -629,13 +603,12 @@ flowchart TD
         doi = paper.doi or "-"
         included_table += f"| {title} | {year} | {doi} |\n"
 
-    # Build excluded papers table
     excluded_papers = [p for p in papers if p.status == ScreeningStatus.EXCLUDED]
     excluded_table = "| Title | Year | Reason |\n|-------|------|--------|\n"
     for entry in excluded_papers:
         year = entry.path.split("-")[0] if "-" in entry.path else "?"
         title = entry.title[:50] + "..." if len(entry.title) > 50 else entry.title
-        # Get reason from paper index
+
         paper_path = vault_path / entry.path
         reason = "-"
         try:
@@ -645,7 +618,6 @@ flowchart TD
             pass
         excluded_table += f"| {title} | {year} | {reason} |\n"
 
-    # Build searches table
     searches_table = (
         "| Query | Providers | Date | Total | Unique |\n"
         "|-------|-----------|------|-------|--------|\n"
@@ -657,14 +629,11 @@ flowchart TD
         total, unique = s.results.total, s.results.unique
         searches_table += f"| {query_short} | {providers_str} | {date} | {total} | {unique} |\n"
 
-    # Compose full document
     content = f"""# Synthesis: {vault_path.name}
 
-## PRISMA Flow
 
 {flowchart}
 
-## Summary Statistics
 
 - **Total papers**: {stats.total}
 - **Included**: {stats.included}
@@ -672,19 +641,15 @@ flowchart TD
 - **Maybe (pending full-text)**: {stats.maybe}
 - **Unscreened**: {stats.unscreened}
 
-## Searches ({len(searches)})
 
 {searches_table}
 
-## Included Papers ({stats.included})
 
 {included_table}
 
-## Excluded Papers ({stats.excluded})
 
 {excluded_table}
 
-## Protocol
 
 **Research Question**: {vault.protocol.question}
 
@@ -730,7 +695,6 @@ def vault_search(
         print("Initialize with: scimesh vault init <path>", file=sys.stderr)
         sys.exit(1)
 
-    # Use protocol databases if not specified
     if providers is None:
         providers = list(vault.protocol.databases)
     else:
@@ -740,7 +704,6 @@ def vault_search(
     print(f"Providers: {', '.join(providers)}")
     print()
 
-    # Import search functionality
     import streamish as st
 
     from scimesh import search as do_search
@@ -755,13 +718,11 @@ def vault_search(
         "semantic_scholar": SemanticScholar,
     }
 
-    # Validate providers
     invalid = [p for p in providers if p not in PROVIDERS]
     if invalid:
         print(f"Error: Unknown providers: {invalid}", file=sys.stderr)
         sys.exit(1)
 
-    # Create provider instances
     provider_instances = [PROVIDERS[p]() for p in providers]
 
     async def _run_search() -> tuple[int, int]:
@@ -801,25 +762,21 @@ def vault_search(
                 output_dir=vault_path,
             )
 
-        # Generate search ID and track papers
         search_id = generate_search_id(query, providers)
 
-        # Build PaperEntry list from found papers
         paper_entries = [
             PaperEntry(
                 path=get_paper_path(p, vault_path)[1],
                 doi=p.doi or "",
                 title=p.title,
                 status=ScreeningStatus.UNSCREENED,
-                search_ids=(),  # Will be set by add_papers_from_search
+                search_ids=(),
             )
             for p in found_papers
         ]
 
-        # Add papers to papers.yaml (handles dedup and search_id assignment)
         total, unique = add_papers_from_search(vault_path, paper_entries, search_id)
 
-        # Record the search
         from datetime import UTC, datetime
 
         search_entry = SearchEntry(
@@ -838,7 +795,6 @@ def vault_search(
         if export_stats.with_pdf > 0:
             print(f"With PDF: {export_stats.with_pdf}", file=sys.stderr)
 
-        # Update vault stats
         update_vault_stats(vault_path)
 
         return total, unique
@@ -875,18 +831,16 @@ def vault_snowball(
 ) -> None:
     """Citation-based paper discovery (snowballing)."""
     try:
-        load_vault(vault_path)  # Verify vault exists
+        load_vault(vault_path)
     except VaultNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Validate direction
     if direction not in ("in", "out", "both"):
         print(f"Error: Invalid direction: {direction}", file=sys.stderr)
         print("Valid options: in (forward citations), out (references), both", file=sys.stderr)
         sys.exit(1)
 
-    # Normalize providers
     providers = [p.strip() for item in providers for p in item.split(",")]
 
     print(f"Snowballing from: {paper_id}")
@@ -901,7 +855,6 @@ def vault_snowball(
         "semantic_scholar": SemanticScholar,
     }
 
-    # Validate providers
     invalid = [p for p in providers if p not in CITATIONS_PROVIDERS]
     if invalid:
         print(f"Error: Unsupported providers for citations: {invalid}", file=sys.stderr)
@@ -947,11 +900,9 @@ def vault_snowball(
                 output_dir=vault_path,
             )
 
-        # Generate search ID for snowball
         snowball_query = f"snowball:{paper_id}:{direction}"
         search_id = generate_search_id(snowball_query, providers)
 
-        # Build PaperEntry list from found papers
         paper_entries = [
             PaperEntry(
                 path=get_paper_path(p, vault_path)[1],
@@ -963,10 +914,8 @@ def vault_snowball(
             for p in all_papers
         ]
 
-        # Add papers to papers.yaml
         total, unique = add_papers_from_search(vault_path, paper_entries, search_id)
 
-        # Record the search
         from datetime import UTC, datetime
 
         search_entry = SearchEntry(
@@ -988,7 +937,6 @@ def vault_snowball(
         if export_stats.with_pdf > 0:
             print(f"With PDF: {export_stats.with_pdf}", file=sys.stderr)
 
-        # Update vault stats
         update_vault_stats(vault_path)
 
         return total, unique

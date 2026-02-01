@@ -1,4 +1,3 @@
-# scimesh/exceptions.py
 """Custom exception hierarchy for scimesh."""
 
 

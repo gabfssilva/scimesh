@@ -1,4 +1,3 @@
-# scimesh/models.py
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
@@ -18,13 +17,11 @@ class Author:
 class Paper:
     """Normalized paper representation across providers."""
 
-    # Required fields
     title: str
     authors: tuple[Author, ...]
     year: int
-    source: str  # Provider name: "arxiv", "scopus", "openalex"
+    source: str
 
-    # Normalized optional fields
     abstract: str | None = None
     doi: str | None = None
     url: str | None = None
@@ -33,12 +30,10 @@ class Paper:
     publication_date: date | None = None
     journal: str | None = None
 
-    # Open access and PDF fields
     pdf_url: str | None = None
     open_access: bool = False
     references_count: int | None = None
 
-    # Provider-specific fields
     extras: dict[str, Any] = field(default_factory=lambda: {})
 
     def __hash__(self) -> int:
@@ -109,10 +104,8 @@ def merge_papers(papers: list[Paper]) -> Paper:
     if len(papers) == 1:
         return papers[0]
 
-    # Primary source is the first one encountered
     primary = papers[0]
 
-    # Abstract: longest non-null
     abstract = None
     max_abstract_len = 0
     for p in papers:
@@ -120,7 +113,6 @@ def merge_papers(papers: list[Paper]) -> Paper:
             abstract = p.abstract
             max_abstract_len = len(p.abstract)
 
-    # Authors: list with most entries
     authors = primary.authors
     max_authors = len(authors)
     for p in papers:
@@ -128,7 +120,6 @@ def merge_papers(papers: list[Paper]) -> Paper:
             authors = p.authors
             max_authors = len(p.authors)
 
-    # Citation count: highest value
     citations_count = None
     for p in papers:
         if p.citations_count is not None and (
@@ -136,7 +127,6 @@ def merge_papers(papers: list[Paper]) -> Paper:
         ):
             citations_count = p.citations_count
 
-    # References count: highest value
     references_count = None
     for p in papers:
         if p.references_count is not None and (
@@ -144,13 +134,11 @@ def merge_papers(papers: list[Paper]) -> Paper:
         ):
             references_count = p.references_count
 
-    # Topics: union of all topics
     all_topics: set[str] = set()
     for p in papers:
         all_topics.update(p.topics)
     topics = tuple(sorted(all_topics))
 
-    # Other fields: first non-null value
     def first_non_null(*values: Any) -> Any:
         for v in values:
             if v is not None:
@@ -163,17 +151,14 @@ def merge_papers(papers: list[Paper]) -> Paper:
     journal = first_non_null(*(p.journal for p in papers))
     pdf_url = first_non_null(*(p.pdf_url for p in papers))
 
-    # Open access: True if any source says it's open access
     open_access = any(p.open_access for p in papers)
 
-    # Merge extras, prefixing keys with source name if there are conflicts
     merged_extras: dict[str, Any] = {}
     for p in papers:
         for key, value in p.extras.items():
             if key not in merged_extras:
                 merged_extras[key] = value
             elif merged_extras[key] != value:
-                # Conflict: prefix with source name
                 prefixed_key = f"{p.source}_{key}"
                 merged_extras[prefixed_key] = value
 

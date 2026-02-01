@@ -1,4 +1,3 @@
-# scimesh/query/combinators.py
 from dataclasses import dataclass
 
 
@@ -63,7 +62,6 @@ class CitationRange(Query):
     max: int | None = None
 
 
-# Factory functions (public API)
 def title(value: str) -> Field:
     return Field("title", value)
 
@@ -100,10 +98,10 @@ def citations(min: int | None = None, max: int | None = None) -> CitationRange:
         max: Maximum citation count (inclusive).
 
     Examples:
-        citations(100)           # min=100
-        citations(100, 500)      # min=100, max=500
-        citations(min=50)        # explicit min
-        citations(max=200)       # max only
+        citations(100)
+        citations(100, 500)
+        citations(min=50)
+        citations(max=200)
     """
     return CitationRange(min, max)
 

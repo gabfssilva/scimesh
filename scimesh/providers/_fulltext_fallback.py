@@ -1,4 +1,3 @@
-# scimesh/providers/_fulltext_fallback.py
 """Mixin that provides local FTS5 fallback for providers without native fulltext."""
 
 from __future__ import annotations
@@ -58,7 +57,6 @@ class FulltextFallbackMixin:
         if not term:
             return
 
-        # Remove fulltext from query to get the base query
         base_query = remove_fulltext(query)
         if base_query is None:
             logger.warning(
@@ -72,7 +70,6 @@ class FulltextFallbackMixin:
         downloader = self._downloader
         cache = PaperCache() if downloader else None
 
-        # Get pre-indexed matches from local FTS5 index
         pre_indexed = set(index.search(term, limit=10000))
 
         if pre_indexed:
@@ -84,20 +81,16 @@ class FulltextFallbackMixin:
             if downloader:
                 await downloader.__aenter__()
 
-            # Stream from API
-            async for paper in self._search_api(base_query):  # type: ignore[attr-defined]
+            async for paper in self._search_api(base_query):
                 paper_id = paper.doi or paper.extras.get("paper_id")
 
-                # Pre-indexed paper that matches → yield immediately
                 if paper_id and paper_id in pre_indexed:
                     yield paper
                     continue
 
-                # No downloader or no DOI → skip
                 if not downloader or not paper.doi or cache is None:
                     continue
 
-                # Download, extract, index, check match → yield if matches
                 text = await self._try_download_single(paper.doi, downloader, cache, index)
                 if text and self._text_matches_term(text, term):
                     yield paper
@@ -123,7 +116,7 @@ class FulltextFallbackMixin:
         Returns:
             Extracted text if successful, None otherwise.
         """
-        # Already indexed? Return cached text
+
         if index.has(doi):
             return cache.get_text(doi)
 
@@ -160,4 +153,4 @@ class FulltextFallbackMixin:
     ) -> AsyncIterator[Paper]:
         """Execute the actual API search. Must be implemented by provider."""
         raise NotImplementedError("Provider must implement _search_api()")
-        yield  # type: ignore  # pragma: no cover
+        yield

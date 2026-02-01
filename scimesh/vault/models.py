@@ -1,4 +1,3 @@
-# scimesh/vault/models.py
 """Data models for vault management."""
 
 from __future__ import annotations
@@ -69,8 +68,8 @@ class Framework:
     """Research question framework (PICO, SPIDER, or custom)."""
 
     type: FrameworkType
-    fields: dict[str, str]  # name -> value
-    schema: tuple[FieldSchema, ...] = ()  # Only for custom
+    fields: dict[str, str]
+    schema: tuple[FieldSchema, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for YAML serialization."""
@@ -210,7 +209,7 @@ class SearchEntry:
     providers: tuple[str, ...]
     executed_at: datetime
     results: SearchResults
-    type: str = "search"  # "search" or "snowball"
+    type: str = "search"
     seed_doi: str | None = None
     direction: str | None = None
 

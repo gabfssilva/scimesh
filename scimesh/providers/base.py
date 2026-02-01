@@ -1,4 +1,3 @@
-# scimesh/providers/base.py
 """Base class for paper search providers."""
 
 from abc import ABC, abstractmethod
@@ -70,8 +69,8 @@ class Provider(ABC):
             Default implementation raises NotImplementedError.
         """
         raise NotImplementedError(f"{self.name} does not support citations()")
-        # The yield below is unreachable but required for type checking
-        yield  # type: ignore  # pragma: no cover
+
+        yield
 
     async def __aenter__(self) -> Self:
         self._client = httpx.AsyncClient(timeout=30.0)

@@ -1,4 +1,3 @@
-# scimesh/vault/operations.py
 """Vault operations for loading, saving, and updating vaults."""
 
 from __future__ import annotations
@@ -182,11 +181,9 @@ def add_papers_from_search(
     existing = load_papers_index(vault_path)
     existing_paths = {p.path for p in existing}
 
-    # Update existing papers with new search_id
     updated_existing: list[PaperEntry] = []
     for paper in existing:
         if paper.path in {p.path for p in papers}:
-            # Add search_id to existing paper
             new_search_ids = tuple(set(paper.search_ids) | {search_id})
             updated_existing.append(
                 PaperEntry(
@@ -200,7 +197,6 @@ def add_papers_from_search(
         else:
             updated_existing.append(paper)
 
-    # Add new papers
     new_papers: list[PaperEntry] = []
     for paper in papers:
         if paper.path not in existing_paths:
@@ -284,7 +280,6 @@ def set_paper_screening(
 
     save_paper(paper_path, data)
 
-    # Update status in papers.yaml
     papers = load_papers_index(vault_path)
     paper_slug = paper_path.name
     updated_papers = [
@@ -332,11 +327,9 @@ def update_vault_stats(vault_path: Path) -> VaultStats:
 
         total += 1
 
-        # Check for PDF
         if (paper_path / "fulltext.pdf").exists():
             with_pdf += 1
 
-        # Get screening status from paper index
         try:
             paper_data = load_paper(paper_path)
             screening = paper_data.get("screening", {})
@@ -348,7 +341,6 @@ def update_vault_stats(vault_path: Path) -> VaultStats:
         except FileNotFoundError:
             status = ScreeningStatus.UNSCREENED
 
-        # Count by status
         if status == ScreeningStatus.INCLUDED:
             included += 1
         elif status == ScreeningStatus.EXCLUDED:
@@ -358,7 +350,6 @@ def update_vault_stats(vault_path: Path) -> VaultStats:
         else:
             unscreened += 1
 
-        # Update paper entry with current status
         updated_papers.append(
             PaperEntry(
                 path=paper_entry.path,
@@ -380,14 +371,12 @@ def update_vault_stats(vault_path: Path) -> VaultStats:
         last_updated=now,
     )
 
-    # Update vault with new stats
     updated_vault = VaultIndex(
         protocol=vault.protocol,
         stats=new_stats,
     )
     save_vault(vault_path, updated_vault)
 
-    # Update papers.yaml with current statuses
     save_papers_index(vault_path, updated_papers)
 
     return new_stats
@@ -420,7 +409,6 @@ def init_vault(
     vault = VaultIndex(protocol=protocol)
     save_vault(vault_path, vault)
 
-    # Create empty searches.yaml and papers.yaml
     save_searches(vault_path, [])
     save_papers_index(vault_path, [])
 

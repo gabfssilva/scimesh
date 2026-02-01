@@ -1,4 +1,3 @@
-# scimesh/fulltext.py
 """Fulltext search using SQLite FTS5."""
 
 import sqlite3
@@ -36,7 +35,6 @@ class FulltextIndex:
     def _init_db(self) -> None:
         """Initialize the database schema."""
         with sqlite3.connect(self.db_path) as conn:
-            # Create FTS5 virtual table for fulltext search
             conn.execute("""
                 CREATE VIRTUAL TABLE IF NOT EXISTS papers_fts USING fts5(
                     paper_id,
@@ -44,7 +42,7 @@ class FulltextIndex:
                     tokenize='porter unicode61'
                 )
             """)
-            # Create a regular table to track metadata
+
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS papers_meta (
                     paper_id TEXT PRIMARY KEY,
@@ -66,7 +64,6 @@ class FulltextIndex:
         content_hash = hashlib.sha256(content.encode()).hexdigest()
 
         with sqlite3.connect(self.db_path) as conn:
-            # Check if paper exists and content has changed
             cursor = conn.execute(
                 "SELECT content_hash FROM papers_meta WHERE paper_id = ?",
                 (paper_id,),
@@ -74,11 +71,9 @@ class FulltextIndex:
             row = cursor.fetchone()
 
             if row and row[0] == content_hash:
-                # Content hasn't changed, skip
                 return
 
             if row:
-                # Update existing entry
                 conn.execute(
                     "DELETE FROM papers_fts WHERE paper_id = ?",
                     (paper_id,),
@@ -89,13 +84,11 @@ class FulltextIndex:
                     (content_hash, paper_id),
                 )
             else:
-                # Insert new entry
                 conn.execute(
                     "INSERT INTO papers_meta (paper_id, content_hash) VALUES (?, ?)",
                     (paper_id, content_hash),
                 )
 
-            # Insert content into FTS table
             conn.execute(
                 "INSERT INTO papers_fts (paper_id, content) VALUES (?, ?)",
                 (paper_id, content),
@@ -113,7 +106,6 @@ class FulltextIndex:
             List of matching paper IDs, ordered by relevance.
         """
         with sqlite3.connect(self.db_path) as conn:
-            # Use FTS5's bm25 ranking function for relevance ordering
             cursor = conn.execute(
                 """
                 SELECT paper_id, bm25(papers_fts) as rank
@@ -210,7 +202,6 @@ def extract_text_from_pdf(pdf_path: Path) -> str | None:
     """
     import subprocess
 
-    # Try pdftotext first (faster and more accurate)
     try:
         result = subprocess.run(
             ["pdftotext", "-enc", "UTF-8", str(pdf_path), "-"],
@@ -223,9 +214,8 @@ def extract_text_from_pdf(pdf_path: Path) -> str | None:
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
 
-    # Fall back to pypdf if available
     try:
-        from pypdf import PdfReader  # type: ignore[import-not-found]
+        from pypdf import PdfReader  # pyright: ignore[reportMissingImports]
 
         reader = PdfReader(pdf_path)
         text_parts = []

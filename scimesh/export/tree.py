@@ -1,4 +1,3 @@
-# scimesh/export/tree.py
 """Tree view exporter for search results."""
 
 from scimesh.export.base import Exporter
@@ -35,10 +34,8 @@ class TreeExporter(Exporter):
         """Format a single paper as tree view."""
         lines: list[str] = []
 
-        # Title as root
         lines.append(self._truncate(paper.title))
 
-        # Metadata as children
         lines.append(f"├── Year: {paper.year}")
         lines.append(f"├── Authors: {self._format_authors(paper)}")
 
@@ -46,7 +43,6 @@ class TreeExporter(Exporter):
         if url:
             lines.append(f"└── URL: {url}")
         else:
-            # Remove last ├ and replace with └ for authors if no URL
             lines[-1] = lines[-1].replace("├──", "└──")
 
         return "\n".join(lines)

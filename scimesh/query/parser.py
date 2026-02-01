@@ -1,4 +1,3 @@
-# scimesh/query/parser.py
 """
 Scopus query syntax parser.
 
@@ -16,7 +15,6 @@ import re
 
 from .combinators import And, CitationRange, Field, Not, Or, Query, YearRange
 
-# Maps Scopus field names to internal field(s)
 FIELD_MAP: dict[str, list[str]] = {
     "TITLE": ["title"],
     "ABS": ["abstract"],
@@ -30,7 +28,6 @@ FIELD_MAP: dict[str, list[str]] = {
     "FULL": ["fulltext"],
 }
 
-# Token patterns
 TOKEN_PATTERN = re.compile(
     r"(TITLE-ABS-KEY|TITLE-ABS|TITLE|ABS|KEY|AUTHOR|AUTH|DOI|ALL|FULL|PUBYEAR|CITEDBY|CITATIONS|AND NOT|AND|OR|>=|<=|[()><=]|\d+|\"[^\"]*\"|[^\s()><=]+)"
 )
@@ -110,14 +107,12 @@ class Parser:
         if token in FIELD_MAP:
             return self.parse_field()
 
-        # Plain text without field specifier: treat as title + abstract search
         return self.parse_plain_text()
 
     def parse_field(self) -> Query:
         field_name = self.consume()
         self.expect("(")
 
-        # Parse content inside field specifier, which may contain OR/AND
         content = self._parse_field_content()
         self.expect(")")
 
@@ -151,14 +146,11 @@ class Parser:
         token = self.peek()
 
         if token == "(":
-            # Nested parentheses inside field content
             self.consume()
             expr = self._parse_field_content_or()
             self.expect(")")
             return expr
 
-        # Collect consecutive terms (not AND, OR, or closing paren)
-        # This handles multi-word terms like: TITLE(machine learning)
         terms: list[str] = []
         while self.peek() not in (None, "AND", "OR", ")"):
             terms.append(self.consume())
@@ -166,7 +158,6 @@ class Parser:
         if not terms:
             raise SyntaxError(f"Expected term in field content, got: {token}")
 
-        # Use a placeholder field that will be replaced
         return Field("_raw", " ".join(terms))
 
     def _apply_fields_to_content(self, content: Query, fields: list[str]) -> Query:
@@ -176,7 +167,6 @@ class Parser:
                 if len(fields) == 1:
                     return Field(fields[0], v)
                 else:
-                    # Multiple fields: OR them together
                     result = Field(fields[0], v)
                     for f in fields[1:]:
                         result = Or(result, Field(f, v))
@@ -195,8 +185,8 @@ class Parser:
                 return content
 
     def parse_pubyear(self) -> Query:
-        self.consume()  # PUBYEAR
-        op = self.consume()  # =, >, <
+        self.consume()
+        op = self.consume()
         year_val = int(self.consume())
 
         if op == "=":
@@ -213,8 +203,8 @@ class Parser:
             raise SyntaxError(f"Unknown PUBYEAR operator: {op}")
 
     def parse_citedby(self) -> Query:
-        self.consume()  # CITEDBY or CITATIONS
-        op = self.consume()  # =, >, <, >=, <=
+        self.consume()
+        op = self.consume()
         count_val = int(self.consume())
 
         if op == "=":
@@ -232,11 +222,11 @@ class Parser:
 
     def parse_plain_text(self) -> Query:
         """Parse plain text without field specifier as title + abstract search."""
-        # Collect consecutive text tokens (not operators or special tokens)
+
         text_parts: list[str] = []
         while self.peek() is not None:
             token = self.peek()
-            # Stop at operators, parentheses, or field names
+
             if token in ("AND", "AND NOT", "OR", "(", ")", "PUBYEAR") or token in FIELD_MAP:
                 break
             text_parts.append(self.consume())
@@ -245,7 +235,7 @@ class Parser:
             raise SyntaxError("Expected text")
 
         value = " ".join(text_parts)
-        # Search in both title and abstract (like TITLE-ABS)
+
         return Or(Field("title", value), Field("abstract", value))
 
 

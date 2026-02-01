@@ -62,7 +62,7 @@ CITATIONS_PROVIDERS = {
 }
 
 
-def _parse_host_concurrency(value: str | None) -> tuple[dict[str, int] | None, int | None]:  # noqa: C901
+def _parse_host_concurrency(value: str | None) -> tuple[dict[str, int] | None, int | None]:
     """Parse host concurrency string into dict and/or default.
 
     Args:
@@ -354,7 +354,7 @@ def _extract_arxiv_doi_from_url(url: str | None) -> str | None:
     return None
 
 
-def _parse_dois_from_stdin() -> list[str]:  # noqa: C901
+def _parse_dois_from_stdin() -> list[str]:
     """Parse DOIs from JSON piped via stdin.
 
     Expects JSON with structure: {"papers": [{"doi": "...", "url": "..."}, ...]}

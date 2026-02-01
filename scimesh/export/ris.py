@@ -1,4 +1,3 @@
-# scimesh/export/ris.py
 from scimesh.models import SearchResult
 
 from .base import Exporter

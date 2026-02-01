@@ -1,4 +1,3 @@
-# scimesh/export/bibtex.py
 import re
 
 from scimesh.models import Paper, SearchResult
@@ -17,7 +16,6 @@ class BibtexExporter(Exporter):
         return "\n\n".join(entries)
 
     def _paper_to_bibtex(self, paper: Paper, index: int) -> str:
-        # Generate citation key: first_author_year_index
         if paper.authors:
             first_author = paper.authors[0].name.split()[-1].lower()
             first_author = re.sub(r"[^a-z]", "", first_author)
@@ -25,7 +23,6 @@ class BibtexExporter(Exporter):
             first_author = "unknown"
         key = f"{first_author}{paper.year}_{index}"
 
-        # Author string
         authors = " and ".join(a.name for a in paper.authors)
 
         lines = [

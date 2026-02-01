@@ -1,4 +1,3 @@
-# scimesh/cache.py
 """PDF caching system for scimesh.
 
 Provides thread-safe caching of downloaded PDFs and extracted text content.
@@ -42,7 +41,6 @@ class PaperCache:
         self.pdf_dir = self.cache_dir / "pdfs"
         self.text_dir = self.cache_dir / "text"
 
-        # Create directories on init
         self.pdf_dir.mkdir(parents=True, exist_ok=True)
         self.text_dir.mkdir(parents=True, exist_ok=True)
 
@@ -63,14 +61,12 @@ class PaperCache:
             >>> cache._make_safe_filename("10.1234/paper.v1")
             '10.1234_paper.v1'
         """
-        # Replace / with _
+
         filename = paper_id.replace("/", "_")
 
-        # Replace other invalid characters: \ : * ? " < > |
         invalid_chars = r'[\\:*?"<>|]'
         filename = re.sub(invalid_chars, "_", filename)
 
-        # If filename is too long (common limit is 255), use hash
         if len(filename) > 200:
             hash_suffix = hashlib.sha256(paper_id.encode()).hexdigest()[:16]
             filename = filename[:180] + "_" + hash_suffix
@@ -117,15 +113,13 @@ class PaperCache:
         filename = self._make_safe_filename(paper_id) + ".pdf"
         target_path = self.pdf_dir / filename
 
-        # Atomic write: write to temp file in same directory, then rename
         fd, temp_path = tempfile.mkstemp(dir=self.pdf_dir, suffix=".tmp")
         try:
             os.write(fd, content)
             os.close(fd)
-            # Atomic rename on POSIX systems
+
             os.replace(temp_path, target_path)
         except Exception:
-            # Clean up temp file on error
             os.close(fd) if fd else None
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
@@ -175,15 +169,13 @@ class PaperCache:
         filename = self._make_safe_filename(paper_id) + ".txt"
         target_path = self.text_dir / filename
 
-        # Atomic write: write to temp file in same directory, then rename
         fd, temp_path = tempfile.mkstemp(dir=self.text_dir, suffix=".tmp")
         try:
             os.write(fd, text.encode("utf-8"))
             os.close(fd)
-            # Atomic rename on POSIX systems
+
             os.replace(temp_path, target_path)
         except Exception:
-            # Clean up temp file on error
             os.close(fd) if fd else None
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
@@ -197,19 +189,16 @@ class PaperCache:
         Removes all PDFs and text files from the cache directories.
         Does not remove the directories themselves.
         """
-        # Clear PDFs
+
         for pdf_file in self.pdf_dir.glob("*.pdf"):
             pdf_file.unlink()
 
-        # Clear temp files
         for tmp_file in self.pdf_dir.glob("*.tmp"):
             tmp_file.unlink()
 
-        # Clear text files
         for text_file in self.text_dir.glob("*.txt"):
             text_file.unlink()
 
-        # Clear temp files in text dir
         for tmp_file in self.text_dir.glob("*.tmp"):
             tmp_file.unlink()
 
