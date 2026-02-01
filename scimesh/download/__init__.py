@@ -14,6 +14,15 @@ from scimesh.download.host_concurrency import HostSemaphores
 from scimesh.download.openaccess import OpenAccessDownloader
 from scimesh.download.scihub import SciHubDownloader
 
+try:
+    from scimesh.download.playwright import PlaywrightConfig, PlaywrightDownloader
+
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    PlaywrightConfig = None  # type: ignore[misc,assignment]
+    PlaywrightDownloader = None  # type: ignore[misc,assignment]
+    PLAYWRIGHT_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -161,12 +170,15 @@ async def _download_single(
 
 __all__ = [
     "Downloader",
+    "DownloadResult",
     "FallbackDownloader",
     "HostSemaphores",
     "OpenAccessDownloader",
-    "SciHubDownloader",
-    "DownloadResult",
     "PaperCache",
+    "PLAYWRIGHT_AVAILABLE",
+    "PlaywrightConfig",
+    "PlaywrightDownloader",
+    "SciHubDownloader",
     "download_papers",
     "make_filename",
 ]
