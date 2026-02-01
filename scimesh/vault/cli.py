@@ -734,7 +734,6 @@ def vault_search(
             providers=provider_instances,
             on_error="warn",
             dedupe=True,
-            stream=True,
         )
         if max_results is not None:
             stream = st.take(max_results, stream)

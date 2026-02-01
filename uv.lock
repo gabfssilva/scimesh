@@ -505,7 +505,7 @@ wheels = [
 
 [[package]]
 name = "scimesh"
-version = "0.2.3.dev2+g799a33317.d20260131"
+version = "0.2.4.dev0+g89d7c9741.d20260201"
 source = { editable = "." }
 dependencies = [
     { name = "cyclopts" },

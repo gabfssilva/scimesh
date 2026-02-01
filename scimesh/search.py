@@ -1,7 +1,7 @@
 import logging
 import warnings
-from collections.abc import AsyncIterator, Coroutine
-from typing import Any, Literal, overload
+from collections.abc import AsyncIterator
+from typing import Literal
 
 import streamish as st
 
@@ -52,7 +52,7 @@ async def _search_stream(
         yield paper
 
 
-async def _collect_results(stream: AsyncIterator[Paper]) -> SearchResult:
+async def collect_search(stream: AsyncIterator[Paper]) -> SearchResult:
     """Collect streamed papers into a SearchResult."""
     papers: list[Paper] = []
     totals: dict[str, int] = {}
@@ -64,34 +64,12 @@ async def _collect_results(stream: AsyncIterator[Paper]) -> SearchResult:
     return SearchResult(papers=papers, total_by_provider=totals)
 
 
-@overload
-def search(
-    query: Query | str,
-    providers: list[Provider],
-    on_error: OnError = ...,
-    dedupe: bool = ...,
-    stream: Literal[False] = ...,
-) -> Coroutine[Any, Any, SearchResult]: ...
-
-
-@overload
-def search(
-    query: Query | str,
-    providers: list[Provider],
-    on_error: OnError = ...,
-    dedupe: bool = ...,
-    *,
-    stream: Literal[True],
-) -> AsyncIterator[Paper]: ...
-
-
 def search(
     query: Query | str,
     providers: list[Provider],
     on_error: OnError = "warn",
     dedupe: bool = True,
-    stream: bool = False,
-) -> Coroutine[Any, Any, SearchResult] | AsyncIterator[Paper]:
+) -> AsyncIterator[Paper]:
     """
     Search for papers across multiple providers.
 
@@ -100,25 +78,19 @@ def search(
         providers: List of providers to search
         on_error: Error handling mode - "fail", "ignore", or "warn"
         dedupe: Whether to deduplicate results (uses sliding window of 10k)
-        stream: If True, yields papers as they arrive; if False, returns SearchResult
 
     Returns:
-        If stream=False: Coroutine that resolves to SearchResult
-        If stream=True: AsyncIterator yielding Paper objects
+        AsyncIterator yielding Paper objects as they arrive.
 
     Examples:
 
-        result = await search(query, providers)
-
-
-        async for paper in search(query, providers, stream=True):
+        async for paper in search(query, providers):
             print(paper.title)
+
+        result = await collect_search(search(query, providers))
     """
     if isinstance(query, str):
         logger.debug("Parsing query string: %s", query)
         query = parse(query)
 
-    paper_stream = _search_stream(query, providers, on_error, dedupe)
-    if stream:
-        return paper_stream
-    return _collect_results(paper_stream)
+    return _search_stream(query, providers, on_error, dedupe)

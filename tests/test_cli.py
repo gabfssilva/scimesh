@@ -24,19 +24,14 @@ def mock_search_result():
 
 
 def make_search_side_effect(result: SearchResult):
-    """Create a side_effect that returns coroutine for batch or async gen for stream."""
-
-    async def batch_coro():
-        return result
+    """Create a side_effect that returns async generator (search always streams now)."""
 
     async def stream_gen():
         for paper in result.papers:
             yield paper
 
     def side_effect(*args, **kwargs):
-        if kwargs.get("stream", False):
-            return stream_gen()
-        return batch_coro()
+        return stream_gen()
 
     return side_effect
 

@@ -141,7 +141,6 @@ async def _stream_search(
         providers=provider_instances,
         on_error=cast(OnError, on_error),
         dedupe=dedupe,
-        stream=True,
     )
     if max_results is not None:
         stream = st.take(max_results, stream)
@@ -276,7 +275,6 @@ def search(
                 providers=provider_instances,
                 on_error=cast(OnError, on_error),
                 dedupe=not no_dedupe,
-                stream=True,
             )
             if max_results is not None:
                 stream = st.take(max_results, stream)
@@ -314,7 +312,6 @@ def search(
             providers=provider_instances,
             on_error=cast(OnError, on_error),
             dedupe=not no_dedupe,
-            stream=True,
         )
         if max_results is not None:
             stream = st.take(max_results, stream)

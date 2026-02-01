@@ -1,7 +1,7 @@
 # tests/test_integration.py
 import pytest
 
-from scimesh import author, search, title, year
+from scimesh import author, collect_search, search, title, year
 from scimesh.export import get_exporter
 from scimesh.providers import Arxiv, OpenAlex, Scopus
 
@@ -11,10 +11,12 @@ async def test_full_workflow_with_combinators():
     """Test full search workflow with combinators API."""
     q = title("attention") & author("Vaswani") & year(2017, 2020)
 
-    result = await search(
-        q,
-        providers=[Arxiv(), OpenAlex()],
-        on_error="ignore",
+    result = await collect_search(
+        search(
+            q,
+            providers=[Arxiv(), OpenAlex()],
+            on_error="ignore",
+        )
     )
 
     assert result.papers is not None
@@ -25,10 +27,12 @@ async def test_full_workflow_with_combinators():
 @pytest.mark.asyncio
 async def test_full_workflow_with_string_query():
     """Test full search workflow with Scopus string query."""
-    result = await search(
-        "TITLE(attention) AND AUTHOR(Vaswani)",
-        providers=[Arxiv()],
-        on_error="ignore",
+    result = await collect_search(
+        search(
+            "TITLE(attention) AND AUTHOR(Vaswani)",
+            providers=[Arxiv()],
+            on_error="ignore",
+        )
     )
 
     assert result.papers is not None
