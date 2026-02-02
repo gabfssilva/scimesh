@@ -313,7 +313,7 @@ def workspace_search(
     import streamish as st
 
     from scimesh import search as do_search
-    from scimesh.export.vault import VaultExporter, get_paper_path
+    from scimesh.export.paper_exporter import VaultExporter, get_paper_path
     from scimesh.models import Paper, SearchResult
     from scimesh.providers import Arxiv, OpenAlex, Scopus, SemanticScholar
     from scimesh.workspace.models import LogEntry, PaperEntry, SearchResults
@@ -442,7 +442,7 @@ def workspace_snowball(
     import asyncio
     import hashlib
 
-    from scimesh.export.vault import VaultExporter, get_paper_path
+    from scimesh.export.paper_exporter import VaultExporter, get_paper_path
     from scimesh.models import Paper, SearchResult
     from scimesh.providers import OpenAlex, SemanticScholar
     from scimesh.workspace.models import LogEntry, PaperEntry, SearchResults

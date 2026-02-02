@@ -22,25 +22,25 @@ Expand a systematic review by following citation chains from key papers.
 ### Forward Citations (papers citing this one)
 
 ```bash
-uvx scimesh vault snowball {review_path}/ "10.1234/key-paper" --direction in -n 50
+uvx scimesh workspace snowball {review_path}/ "10.1234/key-paper" --direction in -n 50
 ```
 
 ### Backward Citations (references)
 
 ```bash
-uvx scimesh vault snowball {review_path}/ "10.1234/key-paper" --direction out -n 50
+uvx scimesh workspace snowball {review_path}/ "10.1234/key-paper" --direction out -n 50
 ```
 
 ### Both Directions
 
 ```bash
-uvx scimesh vault snowball {review_path}/ "10.1234/key-paper" --direction both -n 50
+uvx scimesh workspace snowball {review_path}/ "10.1234/key-paper" --direction both -n 50
 ```
 
 ## Command Options
 
 ```bash
-uvx scimesh vault snowball {review_path}/ "DOI" \
+uvx scimesh workspace snowball {review_path}/ "DOI" \
     --direction in|out|both \     # Citation direction
     -p openalex,semantic_scholar \ # Providers (default: both)
     -n 50 \                        # Max results per direction
@@ -114,23 +114,23 @@ For each seed paper:
 
 ```bash
 # Forward: who cites this?
-uvx scimesh vault snowball {review_path}/ "DOI" --direction in -n 100
+uvx scimesh workspace snowball {review_path}/ "DOI" --direction in -n 100
 
 # Backward: who does this cite?
-uvx scimesh vault snowball {review_path}/ "DOI" --direction out -n 50
+uvx scimesh workspace snowball {review_path}/ "DOI" --direction out -n 50
 
 # Both at once
-uvx scimesh vault snowball {review_path}/ "DOI" --direction both -n 50
+uvx scimesh workspace snowball {review_path}/ "DOI" --direction both -n 50
 ```
 
 ### Step 4: Automatic Deduplication
 
-The vault snowball command automatically:
+The workspace snowball command automatically:
 - Deduplicates against existing papers in `papers.yaml`
 - Records in `searches.yaml` with `type: snowball`, `seed_doi`, `direction`
 - Papers track which searches found them via `search_ids`
 - Downloads PDFs when available (Open Access)
-- Updates vault stats
+- Updates workspace stats
 
 ### Step 5: Screen New Papers
 
@@ -168,7 +168,7 @@ User: "Let's do snowballing on the included papers"
 Agent: Lists included papers, identifies top 5 by citation count
 
 Agent: For each seed:
-       uvx scimesh vault snowball ./review/ "DOI" --direction both -n 50
+       uvx scimesh workspace snowball ./review/ "DOI" --direction both -n 50
 
 Agent: Reports: "Added 127 new papers (89 forward, 38 backward, 23 duplicates removed)"
 

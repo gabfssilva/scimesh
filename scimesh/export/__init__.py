@@ -2,9 +2,9 @@ from .base import Exporter
 from .bibtex import BibtexExporter
 from .csv import CsvExporter
 from .json import JsonExporter
+from .paper_exporter import VaultExporter
 from .ris import RisExporter
 from .tree import TreeExporter
-from .vault import VaultExporter
 
 EXPORTERS: dict[str, type[Exporter]] = {
     "csv": CsvExporter,
@@ -15,14 +15,14 @@ EXPORTERS: dict[str, type[Exporter]] = {
     "tree": TreeExporter,
 }
 
-ALL_FORMATS = list(EXPORTERS.keys()) + ["vault"]
+ALL_FORMATS = list(EXPORTERS.keys()) + ["workspace"]
 
 
 def get_exporter(format: str) -> Exporter:
     """Get an exporter instance by format name.
 
     Note: VaultExporter is not included here as it has a different interface.
-    Use VaultExporter directly for vault format.
+    Use VaultExporter directly for workspace format.
     """
     format_lower = format.lower()
     if format_lower not in EXPORTERS:

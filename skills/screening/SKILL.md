@@ -28,7 +28,7 @@ Guide users through **assisted screening** of papers. This is an **interactive s
 
 ## Step 1: Create Tasks for ALL Papers
 
-**BEFORE screening ANY paper, create a Task for EVERY paper in the vault.**
+**BEFORE screening ANY paper, create a Task for EVERY paper in the workspace.**
 
 ```python
 for paper in all_papers:
@@ -137,19 +137,19 @@ After user decides, **immediately** run the screen command:
 
 ```bash
 # Include papers
-uvx scimesh vault screen {review_path}/ \
+uvx scimesh workspace screen {review_path}/ \
   --include paper-slug:"Proposes novel diffusion-based imputation method"
 
 # Exclude papers
-uvx scimesh vault screen {review_path}/ \
+uvx scimesh workspace screen {review_path}/ \
   --exclude paper-slug:"Focus is on image data, not tabular"
 
 # Mark as maybe (needs full-text review)
-uvx scimesh vault screen {review_path}/ \
+uvx scimesh workspace screen {review_path}/ \
   --maybe paper-slug:"Unclear methodology, need to read full paper"
 
 # Batch screening (multiple papers at once)
-uvx scimesh vault screen {review_path}/ \
+uvx scimesh workspace screen {review_path}/ \
   --include paper1:"reason1" paper2:"reason2" \
   --exclude paper3:"reason3" \
   --maybe paper4:"reason4"
@@ -160,7 +160,7 @@ Then update Task:
 TaskUpdate(taskId="X", status="completed")
 ```
 
-The screen command automatically updates vault stats.
+The screen command automatically updates workspace stats.
 
 ## Resuming a Session
 
@@ -168,10 +168,10 @@ If user has existing review:
 
 ```bash
 # List unscreened papers
-uvx scimesh vault list {review_path}/ --status unscreened
+uvx scimesh workspace list {review_path}/ --status unscreened
 
 # Show screening stats
-uvx scimesh vault stats {review_path}/
+uvx scimesh workspace stats {review_path}/
 ```
 
 ```python

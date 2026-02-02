@@ -18,7 +18,6 @@ from scimesh.models import Paper, SearchResult, merge_papers
 from scimesh.providers import Arxiv, OpenAlex, Scopus, SemanticScholar
 from scimesh.providers.base import Provider
 from scimesh.search import OnError
-from scimesh.vault.cli import vault_app
 from scimesh.workspace.cli import workspace_app
 
 if TYPE_CHECKING:
@@ -29,7 +28,6 @@ app = cyclopts.App(
     help="Scientific paper search across multiple providers.",
 )
 
-app.command(vault_app)
 app.command(workspace_app)
 
 
@@ -173,13 +171,13 @@ def search(
     output: Annotated[
         Path | None,
         cyclopts.Parameter(
-            name=["--output", "-o"], help="Output file path (required for vault format)"
+            name=["--output", "-o"], help="Output file path (required for workspace format)"
         ),
     ] = None,
     format: Annotated[
         str,
         cyclopts.Parameter(
-            name=["--format", "-f"], help="Output format: tree, csv, json, bibtex, ris, vault"
+            name=["--format", "-f"], help="Output format: tree, csv, json, bibtex, ris, workspace"
         ),
     ] = "tree",
     max_results: Annotated[
@@ -237,9 +235,9 @@ def search(
     if format == "tree" and output is None and not sys.stdout.isatty():
         format = "json"
 
-    if format == "vault":
+    if format == "workspace":
         if output is None:
-            print("Error: --output is required for vault format", file=sys.stderr)
+            print("Error: --output is required for workspace format", file=sys.stderr)
             sys.exit(1)
     elif format not in ("tree", "csv", "json", "bibtex", "bib", "ris"):
         print(f"Error: Unknown export format: {format}", file=sys.stderr)
@@ -268,8 +266,8 @@ def search(
         print(f"\nTotal: {count} papers", file=sys.stderr)
         return
 
-    if format == "vault":
-        from scimesh.export.vault import VaultExporter
+    if format == "workspace":
+        from scimesh.export.paper_exporter import VaultExporter
 
         assert output is not None
 
@@ -529,8 +527,8 @@ def get(
         print(f"Available: {list(GET_PROVIDERS.keys())}", file=sys.stderr)
         sys.exit(1)
 
-    if format == "vault":
-        print("Error: vault format is not supported for get command", file=sys.stderr)
+    if format == "workspace":
+        print("Error: workspace format is not supported for get command", file=sys.stderr)
         sys.exit(1)
 
     try:
@@ -698,8 +696,8 @@ def citations(
         print(f"Available: {list(CITATIONS_PROVIDERS.keys())}", file=sys.stderr)
         sys.exit(1)
 
-    if format == "vault":
-        print("Error: vault format is not supported for citations command", file=sys.stderr)
+    if format == "workspace":
+        print("Error: workspace format is not supported for citations command", file=sys.stderr)
         sys.exit(1)
 
     try:

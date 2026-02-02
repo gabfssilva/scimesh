@@ -7,14 +7,14 @@
 
 A Python library for systematic literature search across multiple academic databases.
 
-Search arXiv, OpenAlex, Scopus, and Semantic Scholar with a unified API. Export to BibTeX, RIS, CSV, JSON, or Vault. Download PDFs via Open Access (Unpaywall). Index and search full-text content locally.
+Search arXiv, OpenAlex, Scopus, and Semantic Scholar with a unified API. Export to BibTeX, RIS, CSV, JSON, or Workspace. Download PDFs via Open Access (Unpaywall). Index and search full-text content locally.
 
 ## Features
 
 - **Multi-provider search** - arXiv, OpenAlex, Scopus, Semantic Scholar (parallel queries)
 - **Scopus-style query syntax** - `TITLE(transformers) AND AUTHOR(Vaswani)`
 - **Programmatic query API** - Compose queries with Python operators (`&`, `|`, `~`)
-- **Export formats** - BibTeX, RIS, CSV, JSON, Vault
+- **Export formats** - BibTeX, RIS, CSV, JSON, Workspace
 - **PDF download** - Open Access via Unpaywall (Sci-Hub opt-in) with local caching
 - **Fetch specific papers** - Get paper metadata by DOI with `scimesh get`
 - **Citation graph** - Get papers citing or cited by a paper with `scimesh citations`
@@ -316,7 +316,7 @@ scimesh search <query> [OPTIONS]
 |------|-------------|---------|
 | `-p, --provider` | Providers (comma-separated or repeated): arxiv, openalex, scopus, semantic_scholar | openalex |
 | `-n, --max` | Max total results | 100 |
-| `-f, --format` | Output: tree, csv, json, bibtex, ris, vault | tree |
+| `-f, --format` | Output: tree, csv, json, bibtex, ris, workspace | tree |
 | `-o, --output` | Output file path | stdout |
 | `--on-error` | Error handling: fail, warn, ignore | warn |
 | `--no-dedupe` | Disable deduplication | false |
@@ -487,32 +487,32 @@ providers = [
 
 ---
 
-## Vault Export
+## Workspace Export
 
-The `vault` format exports papers to a folder structure where each paper gets its own directory containing an `index.yaml` with metadata and an optional `fulltext.pdf`. A root `index.yaml` tracks the full corpus with query, providers, statistics, and paper list.
+The `workspace` format exports papers to a folder structure where each paper gets its own directory containing an `index.yaml` with metadata and an optional `fulltext.pdf`. A root `index.yaml` tracks the full corpus with query, providers, statistics, and paper list.
 
 This structure is designed to be **LLM-friendly**: agents can read the YAML metadata, process PDFs, and extend the schema with custom fields for screening, annotations, or workflow tracking. The format supports incremental updates—run searches multiple times and new papers are added while existing ones are preserved.
 
 ### Usage
 
 ```bash
-# Export search results to vault
-scimesh search "TITLE(transformer)" -f vault -o ./papers-vault
+# Export search results to workspace
+scimesh search "TITLE(transformer)" -f workspace -o ./papers-workspace
 
 # With PDF downloads (Open Access)
-scimesh search "TITLE(attention)" -f vault -o ./review-vault
+scimesh search "TITLE(attention)" -f workspace -o ./review-workspace
 
 # With Sci-Hub fallback for paywalled papers
-scimesh search "TITLE(BERT)" -f vault -o ./review-vault --scihub
+scimesh search "TITLE(BERT)" -f workspace -o ./review-workspace --scihub
 
 # Run again to add more papers (incremental)
-scimesh search "TITLE(GPT)" -f vault -o ./review-vault
+scimesh search "TITLE(GPT)" -f workspace -o ./review-workspace
 ```
 
 ### Structure
 
 ```
-papers-vault/
+papers-workspace/
 ├── index.yaml                          # Root index with query, stats, paper list
 ├── 2017-vaswani-attention-is-all-you/
 │   ├── index.yaml                      # Paper metadata
@@ -580,16 +580,16 @@ abstract: "The dominant sequence transduction models are based on complex recurr
 
 ### Designed for LLM Agents
 
-The vault format enables LLM agents to perform systematic literature reviews autonomously. An agent can:
+The workspace format enables LLM agents to perform systematic literature reviews autonomously. An agent can:
 
-1. **Build the corpus** - Run `scimesh search` to populate the vault with papers and PDFs
+1. **Build the corpus** - Run `scimesh search` to populate the workspace with papers and PDFs
 2. **Understand the scope** - Read `index.yaml` to see all papers, stats, and the original query
 3. **Screen papers** - Read each paper's metadata and abstract, then add `screening_status: included/excluded` and `exclusion_reason` fields
 4. **Extract data** - Read PDFs, extract relevant findings, and store them in custom fields like `extracted_findings` or `methods_summary`
 5. **Track progress** - Add workflow fields like `review_stage`, `last_reviewed`, or `assigned_to`
 6. **Generate synthesis** - Aggregate structured data across papers to produce summaries, identify themes, or flag contradictions
 
-The folder-per-paper structure means agents can also create additional files: `notes.md` for detailed annotations, `figures/` for extracted images, or `quotes.yaml` for key passages. The vault grows organically with the review process.
+The folder-per-paper structure means agents can also create additional files: `notes.md` for detailed annotations, `figures/` for extracted images, or `quotes.yaml` for key passages. The workspace grows organically with the review process.
 
 ### Extensibility
 
@@ -603,7 +603,7 @@ The format is intentionally minimal. Agents can add any fields they need:
 | Synthesis | `themes`, `contradictions`, `synthesis_notes` |
 | Workflow | `assigned_to`, `review_stage`, `last_reviewed` |
 
-The vault grows with your workflow. Start with metadata, add structure as needed.
+The workspace grows with your workflow. Start with metadata, add structure as needed.
 
 ---
 

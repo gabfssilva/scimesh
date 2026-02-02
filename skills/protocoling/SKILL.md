@@ -14,13 +14,13 @@ Define research protocol for systematic literature review using PICO, SPIDER, or
 
 Guide users through defining a **complete SLR protocol** before any search. This is an **interactive skill** - use AskUserQuestion to gather all protocol information.
 
-**Core principle:** No search without protocol. Use `scimesh vault init` to create the vault with protocol.
+**Core principle:** No search without protocol. Use `scimesh workspace init --type slr` to create the workspace with protocol.
 
 ## Iron Rules
 
 1. **NO search without protocol** - Protocol MUST exist BEFORE any search
 2. **NO autonomous query building** - Query construction is INTERACTIVE; user approves each component
-3. **Use vault commands** - Always use `scimesh vault` commands for SLR
+3. **Use workspace commands** - Always use `scimesh workspace` commands for SLR
 
 ## Workflow
 
@@ -270,12 +270,12 @@ These questions apply to ALL frameworks:
 
 ## Create Vault with Protocol
 
-After gathering all information via AskUserQuestion, create the vault based on the selected framework:
+After gathering all information via AskUserQuestion, create the workspace based on the selected framework:
 
 ### For PICO Framework
 
 ```bash
-uvx scimesh vault init {review_path}/ \
+uvx scimesh workspace init {review_path}/ \
   --question "Research question here" \
   --framework pico \
   --population "Population" \
@@ -293,7 +293,7 @@ uvx scimesh vault init {review_path}/ \
 ### For SPIDER Framework
 
 ```bash
-uvx scimesh vault init {review_path}/ \
+uvx scimesh workspace init {review_path}/ \
   --question "Research question here" \
   --framework spider \
   --sample "Sample description" \
@@ -310,7 +310,7 @@ uvx scimesh vault init {review_path}/ \
 ### For Custom Framework
 
 ```bash
-uvx scimesh vault init {review_path}/ \
+uvx scimesh workspace init {review_path}/ \
   --question "Research question here" \
   --framework custom \
   --field "population:Description of population" \
@@ -326,7 +326,7 @@ uvx scimesh vault init {review_path}/ \
 
 ## Directory Structure
 
-The vault creates this structure:
+The workspace creates this structure:
 
 ```
 {review_path}/
@@ -456,16 +456,16 @@ After init, use these commands to modify:
 
 ```bash
 # Modify protocol fields
-uvx scimesh vault set {review_path}/ --question "New RQ" --year-range "2020-2024"
+uvx scimesh workspace set {review_path}/ --question "New RQ" --year-range "2020-2024"
 
 # Add inclusion criteria
-uvx scimesh vault add-inclusion {review_path}/ "Must use deep learning"
+uvx scimesh workspace add-inclusion {review_path}/ "Must use deep learning"
 
 # Add exclusion criteria
-uvx scimesh vault add-exclusion {review_path}/ "Survey papers"
+uvx scimesh workspace add-exclusion {review_path}/ "Survey papers"
 
 # Add custom fields (for custom framework)
-uvx scimesh vault set {review_path}/ --field "newfield:Description"
+uvx scimesh workspace set {review_path}/ --field "newfield:Description"
 ```
 
 ## Validation
@@ -477,7 +477,7 @@ Before proceeding to search (scimesh:searching), verify:
 - [ ] At least 1 exclusion criterion defined
 - [ ] Research question is filled
 
-**If validation fails:** Run `vault init` or use `vault set`/`add-*` to complete protocol.
+**If validation fails:** Run `workspace init --type slr` or use `workspace set`/`add-*` to complete protocol.
 
 ## Next Step
 

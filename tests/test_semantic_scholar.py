@@ -320,9 +320,10 @@ async def test_search_paginates_with_offset():
     provider = SemanticScholar()
 
     # Create 3 pages of results (100 + 100 + 50 = 250 total)
-    page1_papers = [_make_paper(f"paper{i}", f"Paper {i}", 2023) for i in range(100)]
-    page2_papers = [_make_paper(f"paper{i}", f"Paper {i}", 2023) for i in range(100, 200)]
-    page3_papers = [_make_paper(f"paper{i}", f"Paper {i}", 2023) for i in range(200, 250)]
+    # Note: titles must contain "test" to pass client-side title filter
+    page1_papers = [_make_paper(f"paper{i}", f"Test Paper {i}", 2023) for i in range(100)]
+    page2_papers = [_make_paper(f"paper{i}", f"Test Paper {i}", 2023) for i in range(100, 200)]
+    page3_papers = [_make_paper(f"paper{i}", f"Test Paper {i}", 2023) for i in range(200, 250)]
 
     page1_response = _make_semantic_scholar_response(page1_papers, 250, 0)
     page2_response = _make_semantic_scholar_response(page2_papers, 250, 100)
@@ -374,7 +375,8 @@ async def test_search_single_page_when_results_fit():
     """Semantic Scholar search should not paginate when results fit in single page."""
     provider = SemanticScholar()
 
-    papers_data = [_make_paper(f"paper{i}", f"Paper {i}", 2023) for i in range(50)]
+    # Note: titles must contain "test" to pass client-side title filter
+    papers_data = [_make_paper(f"paper{i}", f"Test Paper {i}", 2023) for i in range(50)]
     response = _make_semantic_scholar_response(papers_data, 50, 0)
 
     call_count = 0
@@ -419,8 +421,9 @@ async def test_search_stops_at_max_total_results():
         offset = int(offset_match.group(1)) if offset_match else 0
 
         # Generate 100 papers per page
+        # Note: titles must contain "test" to pass client-side title filter
         papers = [
-            _make_paper(f"paper{offset + i}", f"Paper {offset + i}", 2023) for i in range(100)
+            _make_paper(f"paper{offset + i}", f"Test Paper {offset + i}", 2023) for i in range(100)
         ]
 
         mock_response = MagicMock()

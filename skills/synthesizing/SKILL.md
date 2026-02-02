@@ -20,7 +20,7 @@ Generate final synthesis including PRISMA flowchart, included/excluded paper tab
 
 ```bash
 # Screening statistics
-uvx scimesh vault stats {review_path}/
+uvx scimesh workspace stats {review_path}/
 ```
 
 Output:
@@ -39,7 +39,7 @@ Progress: 100%
 
 ```bash
 # Generate PRISMA synthesis with mermaid flowchart and tables
-uvx scimesh vault prisma {review_path}/ -o {review_path}/synthesis.md
+uvx scimesh workspace prisma {review_path}/ -o {review_path}/synthesis.md
 ```
 
 This generates a complete synthesis document with:
@@ -53,41 +53,41 @@ This generates a complete synthesis document with:
 
 ```bash
 # Export included papers to BibTeX
-uvx scimesh vault export {review_path}/ --status included -f bibtex -o included.bib
+uvx scimesh workspace export {review_path}/ --status included -f bibtex -o included.bib
 
 # Export to RIS
-uvx scimesh vault export {review_path}/ --status included -f ris -o included.ris
+uvx scimesh workspace export {review_path}/ --status included -f ris -o included.ris
 
 # Export to CSV (spreadsheet-friendly)
-uvx scimesh vault export {review_path}/ -f csv -o all_papers.csv
+uvx scimesh workspace export {review_path}/ -f csv -o all_papers.csv
 
 # Export to JSON
-uvx scimesh vault export {review_path}/ --status included -f json -o included.json
+uvx scimesh workspace export {review_path}/ --status included -f json -o included.json
 
 # Export to YAML
-uvx scimesh vault export {review_path}/ -f yaml -o papers.yaml
+uvx scimesh workspace export {review_path}/ -f yaml -o papers.yaml
 ```
 
 ## Vault CLI Reference
 
 ```bash
 # Screening statistics
-uvx scimesh vault stats {review_path}/
+uvx scimesh workspace stats {review_path}/
 
 # List papers (table format)
-uvx scimesh vault list {review_path}/
+uvx scimesh workspace list {review_path}/
 
 # List unscreened papers
-uvx scimesh vault list {review_path}/ --status unscreened
+uvx scimesh workspace list {review_path}/ --status unscreened
 
 # List included papers as paths
-uvx scimesh vault list {review_path}/ --status included --format paths
+uvx scimesh workspace list {review_path}/ --status included --format paths
 
 # List papers as JSON
-uvx scimesh vault list {review_path}/ --format json
+uvx scimesh workspace list {review_path}/ --format json
 
 # Generate PRISMA synthesis
-uvx scimesh vault prisma {review_path}/ -o synthesis.md
+uvx scimesh workspace prisma {review_path}/ -o synthesis.md
 ```
 
 ## Final Output Structure

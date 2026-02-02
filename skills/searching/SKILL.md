@@ -12,7 +12,7 @@ Interactive query construction and search execution for systematic literature re
 
 ## Overview
 
-Build search queries **collaboratively with the user**. Never search before showing the query. Always use vault search.
+Build search queries **collaboratively with the user**. Never search before showing the query. Always use workspace search.
 
 **Core principle:** Query construction is COLLABORATIVE. You build the query WITH the user, not FOR them.
 
@@ -21,7 +21,7 @@ Build search queries **collaboratively with the user**. Never search before show
 ## Iron Rules
 
 1. **NO autonomous query building** - Query construction is INTERACTIVE; user approves each component
-2. **Use vault search** - Always use `scimesh vault search` for SLR
+2. **Use workspace search** - Always use `scimesh workspace search` for SLR
 3. **ALWAYS show query in Scala code block** - User must see the FULL query before any search
 4. **READ THE PROTOCOL** - Before building query, read `index.yaml` and extract ALL relevant information for the query (year range, citation thresholds, framework fields, inclusion/exclusion criteria that can be translated to query filters)
 
@@ -57,10 +57,10 @@ TITLE-ABS("imputation" AND "tabular")
 
 ## Step 0: Read Protocol
 
-**BEFORE asking any questions**, read `{vault_path}/index.yaml`:
+**BEFORE asking any questions**, read `{workspace_path}/index.yaml`:
 
 ```bash
-cat {vault_path}/index.yaml
+cat {workspace_path}/index.yaml
 ```
 
 Extract ALL information relevant to the query: year range, citation thresholds, framework fields, and any criteria from inclusion/exclusion that can be translated to query filters.
@@ -128,7 +128,7 @@ uvx scimesh search "QUERY" -p openalex -n 10 -f json | jq '.papers | length'
 
 `scimesh search` is READ-ONLY (as long as you don't provide a custom `-o`):
 - Does NOT create any files or directories
-- Does NOT modify the vault
+- Does NOT modify the workspace
 - Can be run multiple times to refine the query
 - Use it to test different query variations before committing
 
@@ -178,42 +178,42 @@ Then ask:
 ```
 
 - If user chooses "Wait", pause and ask again when ready
-- If user enables Sci-Hub, add `--scihub` flag to vault search command
+- If user enables Sci-Hub, add `--scihub` flag to workspace search command
 
 ## Step 6: Execute Search
 
-**CRITICAL: `scimesh vault search` creates vault structure and downloads papers.**
+**CRITICAL: `scimesh workspace search` creates workspace structure and downloads papers.**
 
 Before executing, you MUST:
 1. Show the COMPLETE query to the user (in Scala code block)
 2. Get EXPLICIT confirmation to proceed
-3. Never execute `vault search` without user seeing the full query first
+3. Never execute `workspace search` without user seeing the full query first
 
-After final confirmation, use the vault search command:
+After final confirmation, use the workspace search command:
 
 ```bash
-uvx scimesh vault search {review_path}/ "FINAL QUERY" \
+uvx scimesh workspace search {review_path}/ "FINAL QUERY" \
     -p arxiv,openalex,semantic_scholar \
     -n 200
 ```
 
-**Note:** `{review_path}` is the vault directory created by `vault init` (e.g., `./reviews/my-review/`)
+**Note:** `{review_path}` is the workspace directory created by `workspace init --type slr` (e.g., `./reviews/my-review/`)
 
 Vault search:
-- Requires existing vault with protocol (run `vault init` first)
+- Requires existing workspace with protocol (run `workspace init --type slr` first)
 - Uses protocol databases by default if `-p` not specified
 - Deduplicates against existing papers in `papers.yaml`
 - Records search in `searches.yaml` (query, providers, results count)
 - Papers track which searches found them via `search_ids`
 - Downloads PDFs when available (Open Access)
-- Auto-updates vault stats
+- Auto-updates workspace stats
 
 ## Incremental Search
 
-Add more papers to existing vault with additional queries:
+Add more papers to existing workspace with additional queries:
 
 ```bash
-uvx scimesh vault search {review_path}/ "NEW QUERY" \
+uvx scimesh workspace search {review_path}/ "NEW QUERY" \
     -p openalex \
     -n 50
 ```

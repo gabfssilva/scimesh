@@ -1,11 +1,11 @@
-# tests/test_vault_export.py
+# tests/test_paper_exporter.py
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import yaml
 
-from scimesh.export.vault import generate_paper_slug, get_paper_path
+from scimesh.export.paper_exporter import generate_paper_slug, get_paper_path
 from scimesh.models import Author, Paper
 
 
@@ -81,7 +81,7 @@ def test_get_paper_path_returns_correct_structure(tmp_path):
 
 
 def test_build_paper_index_full():
-    from scimesh.export.vault import build_paper_index
+    from scimesh.export.paper_exporter import build_paper_index
 
     paper = Paper(
         title="Attention Is All You Need",
@@ -115,7 +115,7 @@ def test_build_paper_index_full():
 
 
 def test_build_paper_index_minimal():
-    from scimesh.export.vault import build_paper_index
+    from scimesh.export.paper_exporter import build_paper_index
 
     paper = Paper(
         title="Minimal Paper",
@@ -137,7 +137,7 @@ def test_build_paper_index_minimal():
 
 def test_build_paper_index_merged_sources():
     """Test paper that came from multiple sources after dedup."""
-    from scimesh.export.vault import build_paper_index
+    from scimesh.export.paper_exporter import build_paper_index
 
     paper = Paper(
         title="Multi-source Paper",
@@ -162,7 +162,7 @@ def test_build_paper_index_merged_sources():
 
 
 def test_build_root_index_new():
-    from scimesh.export.vault import VaultStats, build_root_index
+    from scimesh.export.paper_exporter import VaultStats, build_root_index
 
     stats = VaultStats(
         total=42,
@@ -204,7 +204,7 @@ def test_build_root_index_new():
 
 
 def test_build_root_index_update_existing():
-    from scimesh.export.vault import VaultStats, build_root_index
+    from scimesh.export.paper_exporter import VaultStats, build_root_index
 
     existing = {
         "query": "TITLE(attention)",
@@ -264,7 +264,7 @@ def test_build_root_index_update_existing():
 
 
 def test_vault_exporter_creates_structure(tmp_path):
-    from scimesh.export.vault import VaultExporter
+    from scimesh.export.paper_exporter import VaultExporter
     from scimesh.models import SearchResult
 
     papers = [
@@ -311,7 +311,7 @@ def test_vault_exporter_creates_structure(tmp_path):
 
 
 def test_vault_exporter_skips_existing(tmp_path):
-    from scimesh.export.vault import VaultExporter
+    from scimesh.export.paper_exporter import VaultExporter
     from scimesh.models import SearchResult
 
     output_dir = tmp_path / "vault"
@@ -356,7 +356,7 @@ def test_vault_exporter_skips_existing(tmp_path):
 
 @pytest.mark.asyncio
 async def test_vault_exporter_downloads_pdf(tmp_path: Path):
-    from scimesh.export.vault import VaultExporter
+    from scimesh.export.paper_exporter import VaultExporter
     from scimesh.models import SearchResult
 
     papers = [
@@ -397,7 +397,7 @@ async def test_vault_exporter_downloads_pdf(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_vault_exporter_handles_download_failure(tmp_path: Path):
-    from scimesh.export.vault import VaultExporter
+    from scimesh.export.paper_exporter import VaultExporter
     from scimesh.models import SearchResult
 
     papers = [
