@@ -19,6 +19,7 @@ from scimesh.providers import Arxiv, OpenAlex, Scopus, SemanticScholar
 from scimesh.providers.base import Provider
 from scimesh.search import OnError
 from scimesh.vault.cli import vault_app
+from scimesh.workspace.cli import workspace_app
 
 if TYPE_CHECKING:
     from scimesh.download import FallbackDownloader
@@ -29,6 +30,7 @@ app = cyclopts.App(
 )
 
 app.command(vault_app)
+app.command(workspace_app)
 
 
 def _setup_logging(log_level: str | None) -> None:
