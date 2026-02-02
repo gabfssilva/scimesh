@@ -67,6 +67,7 @@ async def collect_search(stream: AsyncIterator[Paper]) -> SearchResult:
 def search(
     query: Query | str,
     providers: list[Provider],
+    take: int = -1,
     on_error: OnError = "warn",
     dedupe: bool = True,
 ) -> AsyncIterator[Paper]:
@@ -89,8 +90,12 @@ def search(
 
         result = await collect_search(search(query, providers))
     """
-    if isinstance(query, str):
-        logger.debug("Parsing query string: %s", query)
-        query = parse(query)
+    match query:
+        case str():
+            logger.debug("Parsing query string: %s", query)
+            query = parse(query)
 
-    return _search_stream(query, providers, on_error, dedupe)
+    if take < 0:
+        return _search_stream(query, providers, on_error, dedupe)
+
+    return st.take(take, _search_stream(query, providers, on_error, dedupe))

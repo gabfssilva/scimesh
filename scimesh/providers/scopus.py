@@ -175,9 +175,10 @@ class Scopus(Provider):
             return None
 
         authors = []
-        creator = entry.get("dc:creator")
-        if creator:
-            authors.append(Author(name=creator))
+        for author_data in entry.get("author", []):
+            name = author_data.get("authname")
+            if name:
+                authors.append(Author(name=name))
 
         year = 0
         cover_date = entry.get("prism:coverDate", "")
@@ -260,11 +261,12 @@ class Scopus(Provider):
             raise ValueError("Scopus requires an API key. Set SCOPUS_API_KEY or pass api_key=")
 
         if paper_id.startswith("SCOPUS_ID:"):
-            query_str = paper_id
+            scopus_id = paper_id.replace("SCOPUS_ID:", "")
+            query_str = f"EID(2-s2.0-{scopus_id})"
         elif "/" in paper_id:
             query_str = f"DOI({paper_id})"
         else:
-            query_str = f"SCOPUS_ID({paper_id})"
+            query_str = f"EID(2-s2.0-{paper_id})"
 
         headers = {
             "X-ELS-APIKey": self._api_key,
@@ -341,7 +343,7 @@ class Scopus(Provider):
         }
 
         params = {
-            "query": f"REFEID({scopus_id})",
+            "query": f"REFEID(2-s2.0-{scopus_id})",
             "count": min(max_results, 25),
             "view": "COMPLETE",
         }

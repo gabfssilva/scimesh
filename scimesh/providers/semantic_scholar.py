@@ -124,6 +124,50 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
 
         return year_start, year_end
 
+    def _extract_author_only(self, query: Query) -> str | None:
+        """Check if query is author-only and return author name if so."""
+        match query:
+            case Field(field="author", value=v):
+                return v
+            case _:
+                return None
+
+    def _extract_author_filter(self, query: Query) -> str | None:
+        """Extract author name from query for client-side filtering."""
+        match query:
+            case Field(field="author", value=v):
+                return v
+            case And(left=l, right=r):
+                return self._extract_author_filter(l) or self._extract_author_filter(r)
+            case Or(left=l, right=r):
+                return self._extract_author_filter(l) or self._extract_author_filter(r)
+            case _:
+                return None
+
+    def _extract_title_filter(self, query: Query) -> str | None:
+        """Extract title term from query for client-side filtering."""
+        match query:
+            case Field(field="title", value=v):
+                return v
+            case And(left=l, right=r):
+                return self._extract_title_filter(l) or self._extract_title_filter(r)
+            case Or(left=l, right=r):
+                return self._extract_title_filter(l) or self._extract_title_filter(r)
+            case _:
+                return None
+
+    def _normalize_paper_id(self, paper_id: str) -> str:
+        """Normalize paper ID for Semantic Scholar API lookup.
+
+        Handles arXiv DOIs (10.48550/arXiv.XXXX) by converting to ARXIV:XXXX format.
+        """
+        if paper_id.startswith("10.48550/arXiv."):
+            arxiv_id = paper_id.replace("10.48550/arXiv.", "")
+            return f"ARXIV:{arxiv_id}"
+        if "/" in paper_id and not paper_id.startswith(("DOI:", "ARXIV:", "PMID:", "CorpusId:")):
+            return f"DOI:{paper_id}"
+        return paper_id
+
     async def search(
         self,
         query: Query,
@@ -137,7 +181,21 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
                 yield paper
             return
 
+        author_only = self._extract_author_only(query)
+        if author_only:
+            async for paper in self._search_by_author(author_only):
+                yield paper
+            return
+
+        author_filter = self._extract_author_filter(query)
+        title_filter = self._extract_title_filter(query)
         async for paper in self._search_api(query):
+            if author_filter:
+                author_names = " ".join(a.name for a in paper.authors).lower()
+                if author_filter.lower() not in author_names:
+                    continue
+            if title_filter and title_filter.lower() not in paper.title.lower():
+                continue
             yield paper
 
     async def _fetch_with_retry(
@@ -180,6 +238,59 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
                 continue
 
         return None
+
+    async def _search_by_author(self, author_name: str) -> AsyncIterator[Paper]:
+        """Search for papers by author using the author search endpoint."""
+        if self._client is None:
+            raise RuntimeError("Provider not initialized. Use 'async with provider:'")
+
+        headers: dict[str, str] = {}
+        if self._api_key:
+            headers["x-api-key"] = self._api_key
+
+        author_url = f"https://api.semanticscholar.org/graph/v1/author/search?query={author_name}&limit=10&fields=authorId,name,paperCount,citationCount"
+        logger.debug("Searching for author: %s", author_url)
+
+        response = await self._fetch_with_retry(author_url, headers)
+        if response is None:
+            return
+
+        author_data = response.json()
+        authors = author_data.get("data", [])
+        if not authors:
+            return
+
+        best_author = max(authors, key=lambda a: a.get("citationCount", 0))
+        author_id = best_author.get("authorId")
+        if not author_id:
+            return
+
+        logger.debug("Found author %s (id=%s)", best_author.get("name"), author_id)
+
+        offset = 0
+        while True:
+            papers_url = f"https://api.semanticscholar.org/graph/v1/author/{author_id}/papers?offset={offset}&limit=100&fields={API_FIELDS}"
+            logger.debug("Fetching author papers: %s", papers_url)
+
+            response = await self._fetch_with_retry(papers_url, headers)
+            if response is None:
+                return
+
+            papers_data = response.json()
+            papers = papers_data.get("data", [])
+            if not papers:
+                return
+
+            for paper_data in papers:
+                paper = self._parse_paper(paper_data)
+                if paper:
+                    yield paper
+
+            if len(papers) < 100:
+                return
+            offset += 100
+            if offset >= self.MAX_TOTAL_RESULTS:
+                return
 
     async def _search_api(
         self,
@@ -335,7 +446,8 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
         """Fetch a specific paper by DOI or Semantic Scholar ID.
 
         Args:
-            paper_id: DOI (e.g., "10.1038/nature14539") or Semantic Scholar
+            paper_id: DOI (e.g., "10.1038/nature14539"), arXiv DOI
+                (e.g., "10.48550/arXiv.1706.03762"), or Semantic Scholar
                 paper ID (40-character hex string).
 
         Returns:
@@ -346,10 +458,7 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
 
         base_url = "https://api.semanticscholar.org/graph/v1/paper"
 
-        if "/" in paper_id and not paper_id.startswith("DOI:"):
-            lookup_id = f"DOI:{paper_id}"
-        else:
-            lookup_id = paper_id
+        lookup_id = self._normalize_paper_id(paper_id)
 
         url = f"{base_url}/{lookup_id}?fields={API_FIELDS}"
 
