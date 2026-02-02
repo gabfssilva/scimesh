@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from scimesh.workspace.models import (
     CollectionWorkspace,
+    Condensed,
     Constraints,
     ExplorationWorkspace,
     Framework,
@@ -280,6 +281,83 @@ class TestSearchResults:
         assert results.unique == 45
 
 
+class TestCondensed:
+    """Tests for Condensed model."""
+
+    def test_creation_minimal(self):
+        condensed = Condensed(
+            problem="How to improve transformer efficiency",
+            method="Sparse attention mechanisms",
+            results="30% reduction in compute with minimal accuracy loss",
+        )
+        assert condensed.problem == "How to improve transformer efficiency"
+        assert condensed.method == "Sparse attention mechanisms"
+        assert condensed.results == "30% reduction in compute with minimal accuracy loss"
+        assert condensed.limitations is None
+        assert condensed.relevance_to_exploration is None
+
+    def test_creation_full(self):
+        condensed = Condensed(
+            problem="Neural network interpretability",
+            method="Attention visualization techniques",
+            results="Improved understanding of model decisions",
+            limitations="Only works for attention-based models",
+            relevance_to_exploration="Directly addresses explainability research question",
+        )
+        assert condensed.problem == "Neural network interpretability"
+        assert condensed.method == "Attention visualization techniques"
+        assert condensed.results == "Improved understanding of model decisions"
+        assert condensed.limitations == "Only works for attention-based models"
+        assert (
+            condensed.relevance_to_exploration
+            == "Directly addresses explainability research question"
+        )
+
+    def test_from_dict(self):
+        data = {
+            "problem": "Data scarcity in NLP",
+            "method": "Data augmentation",
+            "results": "10% improvement on benchmarks",
+            "limitations": "Language-specific techniques",
+        }
+        condensed = Condensed.model_validate(data)
+        assert condensed.problem == "Data scarcity in NLP"
+        assert condensed.method == "Data augmentation"
+        assert condensed.results == "10% improvement on benchmarks"
+        assert condensed.limitations == "Language-specific techniques"
+        assert condensed.relevance_to_exploration is None
+
+    def test_to_dict(self):
+        condensed = Condensed(
+            problem="Test problem",
+            method="Test method",
+            results="Test results",
+            limitations="Test limitations",
+        )
+        data = condensed.model_dump()
+        assert data["problem"] == "Test problem"
+        assert data["method"] == "Test method"
+        assert data["results"] == "Test results"
+        assert data["limitations"] == "Test limitations"
+        assert data["relevance_to_exploration"] is None
+
+    def test_serialization_roundtrip(self):
+        original = Condensed(
+            problem="Original problem",
+            method="Original method",
+            results="Original results",
+            limitations="Original limitations",
+            relevance_to_exploration="High relevance",
+        )
+        data = original.model_dump()
+        restored = Condensed.model_validate(data)
+        assert restored.problem == original.problem
+        assert restored.method == original.method
+        assert restored.results == original.results
+        assert restored.limitations == original.limitations
+        assert restored.relevance_to_exploration == original.relevance_to_exploration
+
+
 class TestLogEntry:
     """Tests for LogEntry model."""
 
@@ -334,6 +412,49 @@ class TestLogEntry:
         assert entry.seed_doi is None
         assert entry.direction is None
         assert entry.notes is None
+        assert entry.subtopics == []
+        assert entry.suggested_queries == []
+        assert entry.saturation is None
+
+    def test_exploration_fields(self):
+        now = datetime.now()
+        entry = LogEntry(
+            id="explore-001",
+            type="exploration",
+            query="transformer architectures",
+            providers=["openalex", "semantic_scholar"],
+            executed_at=now,
+            results=SearchResults(total=50, unique=45),
+            subtopics=["attention mechanisms", "positional encoding", "layer normalization"],
+            suggested_queries=["sparse attention", "efficient transformers", "linear attention"],
+            saturation=False,
+        )
+        assert entry.subtopics == [
+            "attention mechanisms",
+            "positional encoding",
+            "layer normalization",
+        ]
+        assert entry.suggested_queries == [
+            "sparse attention",
+            "efficient transformers",
+            "linear attention",
+        ]
+        assert entry.saturation is False
+
+    def test_exploration_saturation_true(self):
+        now = datetime.now()
+        entry = LogEntry(
+            id="explore-002",
+            type="exploration",
+            query="BERT fine-tuning",
+            executed_at=now,
+            subtopics=["task-specific layers"],
+            suggested_queries=[],
+            saturation=True,
+        )
+        assert entry.saturation is True
+        assert entry.subtopics == ["task-specific layers"]
+        assert entry.suggested_queries == []
 
     def test_from_dict(self):
         data = {
@@ -463,6 +584,72 @@ class TestPaperIndex:
         assert index.pdf is None
         assert index.abstract is None
         assert index.screening is None
+        assert index.subtopic is None
+        assert index.relevance is None
+        assert index.condensed is None
+
+    def test_exploration_fields(self):
+        condensed = Condensed(
+            problem="Efficient attention computation",
+            method="Linear attention approximation",
+            results="O(n) complexity instead of O(n^2)",
+            limitations="Some accuracy trade-off",
+            relevance_to_exploration="Core technique for efficient transformers",
+        )
+        index = PaperIndex(
+            title="Efficient Transformers: A Survey",
+            authors=["Tay", "Dehghani", "Bahri"],
+            year=2022,
+            doi="10.1145/3530811",
+            subtopic="efficient attention",
+            relevance="high",
+            condensed=condensed,
+        )
+        assert index.subtopic == "efficient attention"
+        assert index.relevance == "high"
+        assert index.condensed is not None
+        assert index.condensed.problem == "Efficient attention computation"
+        assert index.condensed.method == "Linear attention approximation"
+        assert index.condensed.results == "O(n) complexity instead of O(n^2)"
+        assert index.condensed.limitations == "Some accuracy trade-off"
+        assert (
+            index.condensed.relevance_to_exploration == "Core technique for efficient transformers"
+        )
+
+    def test_relevance_levels(self):
+        for relevance_level in ["high", "medium", "low"]:
+            index = PaperIndex(
+                title="Test Paper",
+                authors=["Author"],
+                year=2024,
+                relevance=relevance_level,
+            )
+            assert index.relevance == relevance_level
+
+    def test_paper_index_with_nested_condensed_from_dict(self):
+        data = {
+            "title": "Test Paper with Condensed",
+            "authors": ["Smith"],
+            "year": 2024,
+            "subtopic": "neural scaling",
+            "relevance": "medium",
+            "condensed": {
+                "problem": "Understanding scaling laws",
+                "method": "Empirical analysis",
+                "results": "Power-law relationships",
+                "limitations": "Compute-intensive experiments",
+                "relevance_to_exploration": "Foundational for model design",
+            },
+        }
+        index = PaperIndex.model_validate(data)
+        assert index.subtopic == "neural scaling"
+        assert index.relevance == "medium"
+        assert index.condensed is not None
+        assert index.condensed.problem == "Understanding scaling laws"
+        assert index.condensed.method == "Empirical analysis"
+        assert index.condensed.results == "Power-law relationships"
+        assert index.condensed.limitations == "Compute-intensive experiments"
+        assert index.condensed.relevance_to_exploration == "Foundational for model design"
 
     def test_from_dict(self):
         data = {
@@ -563,3 +750,33 @@ class TestWorkspaceRoundtrip:
         assert restored.authors == original.authors
         assert restored.doi == original.doi
         assert restored.screening.status == original.screening.status
+
+    def test_paper_index_with_exploration_fields_roundtrip(self):
+        condensed = Condensed(
+            problem="Roundtrip test problem",
+            method="Roundtrip test method",
+            results="Roundtrip test results",
+            limitations="Roundtrip test limitations",
+            relevance_to_exploration="Roundtrip test relevance",
+        )
+        original = PaperIndex(
+            title="Exploration Paper",
+            authors=["Explorer"],
+            year=2024,
+            subtopic="test subtopic",
+            relevance="high",
+            condensed=condensed,
+        )
+        data = original.model_dump()
+        restored = PaperIndex.model_validate(data)
+        assert restored.subtopic == original.subtopic
+        assert restored.relevance == original.relevance
+        assert restored.condensed is not None
+        assert restored.condensed.problem == original.condensed.problem
+        assert restored.condensed.method == original.condensed.method
+        assert restored.condensed.results == original.condensed.results
+        assert restored.condensed.limitations == original.condensed.limitations
+        assert (
+            restored.condensed.relevance_to_exploration
+            == original.condensed.relevance_to_exploration
+        )

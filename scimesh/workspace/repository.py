@@ -1,5 +1,6 @@
 """YAML repository for workspace persistence."""
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -11,6 +12,7 @@ from scimesh.workspace.models import (
     PaperEntry,
     PaperIndex,
     SLRWorkspace,
+    Stats,
     parse_workspace,
 )
 
@@ -108,3 +110,84 @@ class YamlWorkspaceRepository:
 
     def paper_exists(self, path: str) -> bool:
         return self._paper_index_path(path).exists()
+
+    def set_paper_screening(self, paper_path: str, status: str, reason: str) -> None:
+        """Set screening status for a paper.
+
+        Args:
+            paper_path: Relative path to paper (e.g., papers/2024/smith)
+            status: included, excluded, or maybe
+            reason: Reason for the decision
+        """
+        paper = self.load_paper(paper_path)
+        now = datetime.now(UTC)
+
+        paper_dict = paper.model_dump(mode="json", exclude_none=True)
+        paper_dict["screening"] = {
+            "status": status,
+            "reason": reason,
+            "screened_at": now.isoformat().replace("+00:00", "Z"),
+        }
+
+        paper_yaml_path = self.root / paper_path / "index.yaml"
+        yaml_content = yaml.safe_dump(paper_dict, default_flow_style=False, allow_unicode=True)
+        paper_yaml_path.write_text(yaml_content)
+
+        papers = self.load_papers()
+        updated = [
+            PaperEntry(
+                path=p.path,
+                doi=p.doi,
+                title=p.title,
+                status=status if p.path == paper_path else p.status,
+                search_ids=p.search_ids,
+            )
+            for p in papers
+        ]
+        self.save_papers(updated)
+
+    def update_stats(self) -> Stats:
+        """Recalculate and update workspace statistics."""
+        workspace = self.load()
+        papers = self.load_papers()
+
+        total = 0
+        with_pdf = 0
+        included = 0
+        excluded = 0
+        maybe = 0
+        unscreened = 0
+
+        for entry in papers:
+            paper_path = self.root / entry.path
+            if not paper_path.exists():
+                continue
+
+            total += 1
+
+            if (paper_path / "fulltext.pdf").exists():
+                with_pdf += 1
+
+            status = entry.status
+            if status == "included":
+                included += 1
+            elif status == "excluded":
+                excluded += 1
+            elif status == "maybe":
+                maybe += 1
+            else:
+                unscreened += 1
+
+        new_stats = Stats(
+            total=total,
+            with_pdf=with_pdf,
+            included=included,
+            excluded=excluded,
+            maybe=maybe,
+            unscreened=unscreened,
+        )
+
+        workspace.stats = new_stats
+        self.save(workspace)
+
+        return new_stats

@@ -105,6 +105,16 @@ class SearchResults(BaseModel):
     unique: int
 
 
+class Condensed(BaseModel):
+    """Condensed paper information from exploration."""
+
+    problem: str
+    method: str
+    results: str
+    limitations: str | None = None
+    relevance_to_exploration: str | None = None
+
+
 class LogEntry(BaseModel):
     """Entry for a search/operation in the log."""
 
@@ -117,6 +127,9 @@ class LogEntry(BaseModel):
     seed_doi: str | None = None
     direction: str | None = None
     notes: str | None = None
+    subtopics: list[str] = Field(default_factory=list)
+    suggested_queries: list[str] = Field(default_factory=list)
+    saturation: bool | None = None
 
 
 class PaperEntry(BaseModel):
@@ -153,3 +166,6 @@ class PaperIndex(BaseModel):
     pdf: str | None = None
     abstract: str | None = None
     screening: Screening | None = None
+    subtopic: str | None = None
+    relevance: str | None = None
+    condensed: Condensed | None = None
