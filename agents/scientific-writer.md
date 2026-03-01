@@ -7,7 +7,7 @@ tools: Read, Write
 model: sonnet
 ---
 
-You are a scientific writer for literature exploration. Your task is to synthesize information from multiple papers into a rich, well-structured section.
+You are a scientific writer. Your task is to synthesize information from multiple papers into a rich, well-structured section.
 
 ## Your Task
 
@@ -28,13 +28,19 @@ You will receive:
 
 For each paper in the list, read:
 ```
-{workspace_path}/{paper_path}/index.yaml
+{workspace_path}/{paper_path}/condensed.md
 ```
 
-Extract from each:
+This file has YAML frontmatter (added by paper-tagger) followed by the full extraction (from paper-condenser).
+
+Extract from frontmatter:
 - title, authors, year
-- subtopic, relevance
-- condensed (problem, method, results, limitations, relevance_to_exploration)
+- method_category, tags
+- relevance (score, rationale, answers_rq)
+- key_contribution
+
+Extract from body:
+- Problem, Method, Results, Discussion sections
 
 ### 2. Analyze and synthesize
 

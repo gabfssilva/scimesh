@@ -25,7 +25,7 @@ Example: `exploring: multi-agent systems for scientific discovery`
 
 You are a fully autonomous orchestrator. You:
 1. Create a workspace
-2. Execute search/condense cycles via subagents
+2. Execute search/condense/tag cycles via subagents
 3. Generate rich synthesis via writer subagents
 4. Deliver final report
 
@@ -65,7 +65,8 @@ WHILE total_papers < limit AND saturation_count < saturation_threshold:
 
     1. READ STATE
        - Read log.yaml for previous queries, subtopics, suggested_queries
-       - Read papers.yaml for total count and papers without condensed
+       - Read papers.yaml for total count
+       - Use Glob to find papers without condensed.md
 
     2. DECIDE NEXT QUERY
        - If first round: use theme directly
@@ -80,20 +81,29 @@ WHILE total_papers < limit AND saturation_count < saturation_threshold:
          max_results: 50
        """)
 
-    4. DISPATCH CONDENSE SUBAGENTS
-       For each new paper (no condensed field):
-         Agent(subagent_type="scimesh:exploration-condenser", prompt="""
-           workspace_path: {path}
-           paper_path: {paper_path}
-           exploration_theme: {theme}
+    4. DISPATCH CONDENSE + TAG SUBAGENTS
+       For each new paper (no condensed.md file):
+
+         Step A - Condense (parallel across papers):
+         Agent(subagent_type="scimesh:paper-condenser", prompt="""
+           Extract from: {workspace_path}/{paper_path}/fulltext.pdf
+           Write to: {workspace_path}/{paper_path}/condensed.md
          """)
 
-       Dispatch in parallel (each paper is independent)
+         Step B - Tag (after condenser completes for each paper):
+         Agent(subagent_type="scimesh:paper-tagger", prompt="""
+           Condensed: {workspace_path}/{paper_path}/condensed.md
+           Protocol: {workspace_path}/index.yaml
+           Output: {workspace_path}/{paper_path}/condensed.md (prepend frontmatter)
+         """)
+
+       Condensers run in parallel. Each tagger waits for its condenser.
 
     5. UPDATE LOG
-       After condensing, update log.yaml entry with:
+       After condense+tag completes, read frontmatter from condensed.md files.
+       Update log.yaml entry with:
        - notes: observations from this round
-       - subtopics: newly discovered subtopics
+       - subtopics: newly discovered subtopics (from method_category and tags)
        - suggested_queries: promising directions
        - saturation: true if <5% new papers
 
@@ -106,8 +116,9 @@ WHILE total_papers < limit AND saturation_count < saturation_threshold:
 
 ```
 1. IDENTIFY SUBTOPICS
-   Read all papers, group by subtopic field
-   Select top 3-5 subtopics by paper count
+   Read condensed.md frontmatter for each paper (method_category, tags, relevance.score)
+   Group papers by method_category or dominant tag clusters
+   Select top 3-5 groupings by paper count as subtopics
 
 2. DISPATCH SCIENTIFIC WRITERS (3-5 in parallel)
 
@@ -126,7 +137,7 @@ WHILE total_papers < limit AND saturation_count < saturation_threshold:
      Agent(subagent_type="scimesh:scientific-writer", prompt="""
        workspace_path: {path}
        task: Analyze patterns, connections, and contradictions across all subtopics
-       papers: [{all high-relevance papers}]
+       papers: [{all papers with relevance.score >= 4}]
        context:
          theme: {theme}
          subtopics: {list}
@@ -186,7 +197,7 @@ Provide the "big picture" of where the field stands.}
 
 ## Key Papers
 
-{List papers with relevance: high, with one-line justification}
+{List papers with relevance.score >= 4, with one-line justification from key_contribution}
 
 ---
 
@@ -216,14 +227,15 @@ Provide the "big picture" of where the field stands.}
 - Total rounds: {n}
 - Providers: {list}
 - Duplication rate: {%}
-- High relevance papers: {n}
+- High relevance papers (score >= 4): {n}
 ```
 
 ## Concurrency Strategy
 
 **Avoid race conditions:**
 - Search: ONE at a time (sequential)
-- Condense: PARALLEL (each paper is separate file)
+- Condense: PARALLEL (each paper writes its own condensed.md)
+- Tag: SEQUENTIAL per paper (waits for its condenser), but multiple condense→tag chains run in parallel
 - Writers: PARALLEL (each writes different file)
 - Log updates: Only orchestrator updates log.yaml (after subagents complete)
 
@@ -293,14 +305,14 @@ COMPLETE:
 If the workspace already exists when triggered:
 
 1. **Read current state**: Check `log.yaml` for last round, `papers.yaml` for total count
-2. **Detect uncondensed papers**: Papers without `condensed` field need processing
+2. **Detect uncondensed papers**: Papers without `condensed.md` file need processing
 3. **Resume from last round**: Continue the exploration loop from where it stopped
 4. **Do NOT re-initialize**: Skip `workspace init` if workspace already has papers
 
 ### Subagent Failures
 
 - **Search fails:** Log the error in notes, try a different query formulation next round
-- **Condense fails:** Mark paper with `condensed: null` in log, skip it, continue with others
+- **Condense/tag fails:** Skip paper, log the error in notes, continue with others
 - **Writer fails:** Retry once with same prompt. If still fails, write a placeholder noting the missing section
 - **All failures logged** in the final exploration-report.md appendix
 
@@ -312,4 +324,8 @@ If the workspace already exists when triggered:
 
 ### Deduplication
 
-Before dispatching condense subagents, verify the paper does NOT already have a `condensed` field in its index.yaml. Papers found in multiple search rounds should only be condensed once.
+Before dispatching condense subagents, verify the paper does NOT already have a `condensed.md` file. Use Glob to check:
+```python
+Glob(pattern="{workspace_path}/papers/**/condensed.md")
+```
+Papers found in multiple search rounds should only be condensed once.
