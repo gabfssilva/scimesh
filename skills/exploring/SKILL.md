@@ -32,7 +32,9 @@ You are a fully autonomous orchestrator. You:
 **CRITICAL CONSTRAINTS:**
 - You are 100% AUTONOMOUS - NEVER ask user for confirmation
 - ONLY use `scimesh` CLI commands via Bash
-- NEVER use Read/Write/Edit tools directly (subagents do that)
+- Use Read to check workspace state (log.yaml, papers.yaml, synthesis/*.md)
+- Use Write/Edit ONLY for log.yaml updates
+- Delegate paper-level operations (reading PDFs, updating paper index.yaml) to subagents
 - NO git operations until explicitly told
 - Dispatch subagents for all file operations
 
@@ -51,7 +53,7 @@ User can override: `exploring: {theme} --limit 100 --providers openalex`
 ### Phase 1: Initialize
 
 ```bash
-uv run scimesh workspace init {workspace_path} --type exploration --question "{theme}"
+uvx scimesh workspace init {workspace_path} --type exploration --question "{theme}"
 ```
 
 Use workspace path: `explorations/{slugified-theme}`
@@ -71,7 +73,7 @@ WHILE total_papers < limit AND saturation_count < saturation_threshold:
        - Avoid repeating similar queries
 
     3. DISPATCH SEARCH SUBAGENT
-       Task(subagent_type="scimesh:search", prompt="""
+       Agent(subagent_type="scimesh:search", prompt="""
          workspace_path: {path}
          query: {decided_query}
          providers: {providers}
@@ -80,7 +82,7 @@ WHILE total_papers < limit AND saturation_count < saturation_threshold:
 
     4. DISPATCH CONDENSE SUBAGENTS
        For each new paper (no condensed field):
-         Task(subagent_type="scimesh:condense", prompt="""
+         Agent(subagent_type="scimesh:exploration-condenser", prompt="""
            workspace_path: {path}
            paper_path: {paper_path}
            exploration_theme: {theme}
@@ -110,7 +112,7 @@ WHILE total_papers < limit AND saturation_count < saturation_threshold:
 2. DISPATCH SCIENTIFIC WRITERS (3-5 in parallel)
 
    For each major subtopic:
-     Task(subagent_type="scimesh:scientific-writer", prompt="""
+     Agent(subagent_type="scimesh:scientific-writer", prompt="""
        workspace_path: {path}
        task: Synthesize the subtopic '{subtopic}' with depth and critical analysis
        papers: [{list of paper paths in this subtopic}]
@@ -121,7 +123,7 @@ WHILE total_papers < limit AND saturation_count < saturation_threshold:
      """)
 
    Cross-analysis:
-     Task(subagent_type="scimesh:scientific-writer", prompt="""
+     Agent(subagent_type="scimesh:scientific-writer", prompt="""
        workspace_path: {path}
        task: Analyze patterns, connections, and contradictions across all subtopics
        papers: [{all high-relevance papers}]
@@ -132,7 +134,7 @@ WHILE total_papers < limit AND saturation_count < saturation_threshold:
      """)
 
    Gaps analysis:
-     Task(subagent_type="scimesh:scientific-writer", prompt="""
+     Agent(subagent_type="scimesh:scientific-writer", prompt="""
        workspace_path: {path}
        task: Identify research gaps, open questions, and future directions
        papers: [{all papers}]
@@ -147,7 +149,7 @@ WHILE total_papers < limit AND saturation_count < saturation_threshold:
 
 ```
 1. FINISH WORKSPACE
-   uv run scimesh workspace finish {workspace_path}
+   uvx scimesh workspace finish {workspace_path}
 
 2. COMPILE REPORT
    Read all synthesis/*.md files
@@ -284,9 +286,30 @@ COMPLETE:
 - Stop reason: saturation reached
 ```
 
-## Error Handling
+## Error Handling & Recovery
 
-- **Search fails:** Log error, try different query
-- **Condense fails:** Skip paper, mark in log
-- **Writer fails:** Retry once, then proceed without that section
-- **All failures logged** in exploration-report.md appendix
+### Resuming an Interrupted Exploration
+
+If the workspace already exists when triggered:
+
+1. **Read current state**: Check `log.yaml` for last round, `papers.yaml` for total count
+2. **Detect uncondensed papers**: Papers without `condensed` field need processing
+3. **Resume from last round**: Continue the exploration loop from where it stopped
+4. **Do NOT re-initialize**: Skip `workspace init` if workspace already has papers
+
+### Subagent Failures
+
+- **Search fails:** Log the error in notes, try a different query formulation next round
+- **Condense fails:** Mark paper with `condensed: null` in log, skip it, continue with others
+- **Writer fails:** Retry once with same prompt. If still fails, write a placeholder noting the missing section
+- **All failures logged** in the final exploration-report.md appendix
+
+### Rate Limiting
+
+- If a provider returns 429 (rate limited), wait 30 seconds before retrying
+- Alternate between providers across rounds to distribute load
+- If all providers are rate-limited, pause for 60 seconds
+
+### Deduplication
+
+Before dispatching condense subagents, verify the paper does NOT already have a `condensed` field in its index.yaml. Papers found in multiple search rounds should only be condensed once.

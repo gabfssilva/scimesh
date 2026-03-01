@@ -71,7 +71,7 @@ Task 4: [pending] Screen: "TabCSDI: Conditional Score..."
 | Conference abstract only (no full paper) | Auto-exclude: "Abstract only, insufficient data" |
 | Poster / Extended abstract | Auto-exclude: "Poster/extended abstract only" |
 | Preprint with published version already included | Auto-exclude: "Preprint superseded by published version" |
-| Paper not accessible (paywall, no PDF) | Auto-exclude: "Full text not accessible" |
+| Paper not accessible (paywall, no PDF, AND abstract insufficient) | Auto-exclude: "Full text not accessible and abstract insufficient for assessment" |
 | Book chapter (unless protocol allows) | Auto-exclude: "Book chapter excluded by protocol" |
 | Thesis/Dissertation (unless protocol allows) | Auto-exclude: "Thesis excluded by protocol" |
 | Non-peer-reviewed source (blog, white paper) | Auto-exclude: "Non-peer-reviewed source" |

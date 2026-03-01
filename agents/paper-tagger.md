@@ -16,12 +16,21 @@ Read the condensed paper markdown and the review protocol. Add YAML frontmatter 
 ## Inputs
 
 1. `{paper_path}/condensed.md` - The condensed paper extraction
-2. `{review_path}/index.yaml` - Review protocol with:
-   - `question`: Research question
-   - `framework.type`: pico, spider, or custom
-   - `framework.fields`: Dictionary of field names and values
-   - `inclusion`: Inclusion criteria
-   - `exclusion`: Exclusion criteria
+2. `{review_path}/index.yaml` - Workspace config with the following structure:
+   ```yaml
+   type: slr
+   question: "Research question"
+   framework:
+     type: pico  # or spider, custom
+     fields:
+       population: "..."
+       intervention: "..."
+       # (varies by framework)
+   inclusion:
+     - "criterion 1"
+   exclusion:
+     - "criterion 1"
+   ```
 
 Note: Papers are organized as `{review_path}/papers/{year}/{paper-slug}/`
 
@@ -75,7 +84,7 @@ relevance:
 ## Field Definitions
 
 ### method_category
-Single lowercase term describing the main methodological approach:
+Single lowercase term describing the main methodological approach. Common categories include (but are NOT limited to):
 - `diffusion` - Diffusion-based models
 - `transformer` - Transformer architectures
 - `gnn` - Graph neural networks
@@ -87,7 +96,17 @@ Single lowercase term describing the main methodological approach:
 - `hybrid` - Combination of approaches
 - `statistical` - Statistical methods
 - `rule-based` - Rule-based systems
+- `experimental` - Laboratory or field experiments
+- `simulation` - Computational simulation
+- `qualitative` - Qualitative methods (interviews, ethnography, etc.)
+- `mixed-methods` - Combination of qualitative and quantitative
+- `analytical` - Mathematical or formal analysis
+- `survey` - Survey-based research
+- `case-study` - In-depth case study analysis
+- `meta-analysis` - Quantitative synthesis of prior studies
 - `n/a` - For reviews/benchmarks without a proposed method
+
+Choose the most fitting term. If none fits, create a new descriptive lowercase slug.
 
 ### tags
 3-7 lowercase tags describing:
@@ -117,21 +136,27 @@ Single lowercase term describing the main methodological approach:
 
 ## Framework-Aware Relevance Assessment
 
-Read `protocol.framework.type` and `protocol.framework.fields` from the protocol.
+Read the `framework` section from `index.yaml`. The structure is:
+```yaml
+framework:
+  type: pico  # or spider, custom
+  fields:
+    field_name: "field value"
+```
 
-For PICO frameworks:
-- Reference population, intervention, comparison, outcome in rationale
+For PICO frameworks (`framework.type: pico`):
+- Reference population, intervention, comparison, outcome from `framework.fields` in rationale
 
-For SPIDER frameworks:
-- Reference sample, phenomenon, design, evaluation, research_type in rationale
+For SPIDER frameworks (`framework.type: spider`):
+- Reference sample, phenomenon, design, evaluation, research_type from `framework.fields` in rationale
 
-For Custom frameworks:
-- Reference the actual field names from `protocol.framework.fields`
-- Use the field names as they appear in the protocol
+For Custom frameworks (`framework.type: custom`):
+- Reference the actual field names from `framework.fields`
+- Use the field names as they appear in the framework
 
-Always match the terminology used in the protocol's framework fields.
+Always match the terminology used in the framework's fields.
 
-### Example for PICO protocol:
+### Example for PICO framework:
 ```yaml
 relevance:
   rationale: |
@@ -140,7 +165,7 @@ relevance:
     comparison (placebo) for the outcome (HbA1c levels).
 ```
 
-### Example for Custom protocol with task/method/metrics:
+### Example for Custom framework with task/method/metrics:
 ```yaml
 relevance:
   rationale: |
@@ -152,7 +177,7 @@ relevance:
 
 - Extract metadata accurately from the condensed.md content
 - Tags should be specific and useful for filtering/grouping papers
-- Relevance rationale must reference the specific research question from the protocol
-- Reference the framework fields from the protocol when explaining relevance
+- Relevance rationale must reference the specific research question from index.yaml
+- Reference the framework fields from index.yaml when explaining relevance
 - Be honest about relevance - not every included paper is highly relevant
 - If DOI is not mentioned in condensed.md, use "unknown"

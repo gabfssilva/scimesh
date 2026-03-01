@@ -57,13 +57,9 @@ TITLE-ABS("imputation" AND "tabular")
 
 ## Step 0: Read Protocol
 
-**BEFORE asking any questions**, read `{workspace_path}/index.yaml`:
+**BEFORE asking any questions**, read `{workspace_path}/index.yaml` using the Read tool.
 
-```bash
-cat {workspace_path}/index.yaml
-```
-
-Extract ALL information relevant to the query: year range, citation thresholds, framework fields, and any criteria from inclusion/exclusion that can be translated to query filters.
+Extract ALL information relevant to the query: year range, citation thresholds, framework fields (`framework.type` and `framework.fields`), and any criteria from inclusion/exclusion that can be translated to query filters.
 
 ## Step 1: Identify Key Concepts
 
@@ -199,11 +195,11 @@ uvx scimesh workspace search {review_path}/ "FINAL QUERY" \
 
 **Note:** `{review_path}` is the workspace directory created by `workspace init --type slr` (e.g., `./reviews/my-review/`)
 
-Vault search:
+Workspace search behavior:
 - Requires existing workspace with protocol (run `workspace init --type slr` first)
-- Uses protocol databases by default if `-p` not specified
+- Uses workspace databases by default if `-p` not specified
 - Deduplicates against existing papers in `papers.yaml`
-- Records search in `searches.yaml` (query, providers, results count)
+- Records search in `log.yaml` (query, providers, results count)
 - Papers track which searches found them via `search_ids`
 - Downloads PDFs when available (Open Access)
 - Auto-updates workspace stats

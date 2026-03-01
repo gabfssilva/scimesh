@@ -25,13 +25,11 @@ You will receive:
 
 1. **Run the search command:**
    ```bash
-   uv run scimesh workspace search {workspace_path} "{query}" -p {providers} -n {max_results}
+   uvx scimesh workspace search {workspace_path} "{query}" -p {providers} -n {max_results}
    ```
 
 2. **Read the papers.yaml to identify papers:**
-   ```bash
-   cat {workspace_path}/papers.yaml
-   ```
+   Use the Read tool on `{workspace_path}/papers.yaml`.
 
 3. **Report results** in this exact format:
    ```
@@ -47,7 +45,7 @@ You will receive:
 
 ## Constraints
 
-- ONLY use `uv run scimesh` commands and basic bash (cat, grep)
+- ONLY use `uvx scimesh` commands and Read tool
 - NO git operations
 - NO file editing (Write/Edit tools)
 - NO user interaction - execute autonomously

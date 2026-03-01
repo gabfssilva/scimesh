@@ -6,7 +6,7 @@ description: |
   USE THIS SKILL FOR ALL:
   - Search scientific papers, academic articles, recent research
   - Explore ML, AI, NLP, Computer Vision literature
-  - Save papers to Second Brain vault
+  - Save papers to workspace
   - Find paper citations and references
   - Discover new papers on specific topics
   - Search specific paper by DOI
@@ -55,7 +55,7 @@ uvx scimesh search "attention mechanism"
 - "I want to read about Z"
 - "recent papers on W"
 - "what's new in transformers?"
-- "save this paper to vault"
+- "save this paper to workspace"
 
 ## Search Flow
 
@@ -152,7 +152,7 @@ Manual alternatives:
 - **arXiv**: `https://arxiv.org/pdf/XXXX.XXXXX`
 - **Generic DOI**: Check the `pdf_url` field in search results
 
-### 2. Folder Structure
+### 3. Folder Structure
 
 Ask user where to save papers (if not already configured):
 
@@ -174,7 +174,7 @@ Save in `{papers_dir}/` with the structure:
 ```
 {papers_dir}/
   <year>-<first-author>-<short-title>/
-    fullpaper.pdf
+    fulltext.pdf
     README.md
 ```
 
@@ -182,13 +182,13 @@ Save in `{papers_dir}/` with the structure:
 
 Example: `2024-wang-treb/`
 
-### 3. Read the PDF
+### 4. Read the PDF
 
 - Use `Read` tool directly on the `.pdf` file (native Claude Code support)
 - **No need** for `pdftotext`, `PyMuPDF`, or other Python libs
 - Claude Code extracts text + renders figures page by page
 
-### 4. Systematic Reading Structure
+### 5. Systematic Reading Structure
 
 1. **Abstract** - understand the main claim
 2. **Figures/Tables** - often tell the story before the text
@@ -196,7 +196,7 @@ Example: `2024-wang-treb/`
 4. **Results** - specific metrics, comparisons with baselines
 5. **Limitations** - what the authors admit (or omit)
 
-### 5. Critical Verification Checklist
+### 6. Critical Verification Checklist
 
 - [ ] Compares with relevant baselines?
 - [ ] Uses standard metrics for the field?
@@ -205,7 +205,7 @@ Example: `2024-wang-treb/`
 - [ ] Code available?
 - [ ] Limitations section exists?
 
-### 6. Common Red Flags
+### 7. Common Red Flags
 
 - Empty or superficial "Evaluation" sections
 - Only one dataset
@@ -223,12 +223,12 @@ When the user asks to save a paper:
    mkdir -p {papers_dir}/<year>-<author>-<title>/
    ```
 
-4. Download PDF (if available):
+3. Download PDF (if available):
    ```bash
    uvx scimesh download "DOI" -o {papers_dir}/<year>-<author>-<title>/
    ```
 
-5. Create `README.md` in the folder with the format:
+4. Create `README.md` in the folder with the format:
    ```markdown
    ---
    title: "Paper Title"
@@ -267,7 +267,7 @@ When the user asks to save a paper:
    ## Links
 
    - [arXiv](url)
-   - [PDF](./fullpaper.pdf)
+   - [PDF](./fulltext.pdf)
    - [GitHub](url) (if available)
 
    ## Connections
@@ -280,7 +280,7 @@ When the user asks to save a paper:
    [Space for personal annotations]
    ```
 
-6. Suggest connections with other vault notes
+5. Suggest connections with other workspace notes
 
 ## Available Commands
 
@@ -447,19 +447,19 @@ uvx scimesh search "TITLE(transformer) AND PUBYEAR = 2024" -n 20
 uvx scimesh search "AUTHOR(Bengio) AND TITLE(deep learning)" -n 20
 ```
 
-**User**: "save the second one to vault"
+**User**: "save the second one to workspace"
 
 **Skill**:
 1. Get data from the second paper of the last search
 2. Create folder: `{papers_dir}/2024-author-title/`
-3. Download PDF: `fullpaper.pdf` (if available via Open Access)
+3. Download PDF: `fulltext.pdf` (if available via Open Access)
 4. Generate `README.md` with complete summary
 5. Suggest tags and connections
 
 **User**: "read this paper for me"
 
 **Skill**:
-1. Use `Read` tool on `fullpaper.pdf`
+1. Use `Read` tool on `fulltext.pdf`
 2. Follow systematic reading structure
 3. Apply critical verification checklist
 4. Identify red flags if any

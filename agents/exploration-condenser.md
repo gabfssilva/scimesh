@@ -1,5 +1,5 @@
 ---
-name: condense
+name: exploration-condenser
 description: |
   Condenses a paper's PDF and saves structured extraction to its index.yaml.
   Extracts problem, method, results, limitations and assesses relevance.
@@ -48,13 +48,10 @@ From the paper, extract:
 Also determine:
 - **subtopic**: Which subtopic/area does this paper belong to? (short phrase)
 - **relevance**: How relevant to the exploration? (high/medium/low)
-- **dominated**: Does this paper make sense for the exploration?
-  - `true` = Paper is relevant, should be considered
-  - `false` = Paper is off-topic, noise, or doesn't fit the exploration theme
 
 ### 4. Update the index.yaml
 
-Add these fields to the existing YAML (preserve all existing fields):
+Append these fields to the existing YAML (preserve all existing fields):
 
 ```yaml
 # ... existing fields ...
@@ -73,11 +70,7 @@ condensed:
     {relevance assessment}
 ```
 
-Use this command to update:
-```bash
-# Read, modify, and write back the YAML
-# The orchestrator will handle the actual file update
-```
+Use the Edit tool to append the new fields to the existing index.yaml. Do NOT overwrite existing fields.
 
 ### 5. Report completion
 
@@ -92,7 +85,7 @@ summary: {one-line summary of the paper}
 
 ## Constraints
 
-- ONLY read files and use bash for scimesh commands
+- Use Read to read files, Edit to update index.yaml, Bash only for scimesh commands
 - NO git operations
 - Work autonomously - no user interaction
 - If PDF is unreadable, use abstract from index.yaml

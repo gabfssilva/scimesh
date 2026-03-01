@@ -14,13 +14,13 @@ Define research protocol for systematic literature review using PICO, SPIDER, or
 
 Guide users through defining a **complete SLR protocol** before any search. This is an **interactive skill** - use AskUserQuestion to gather all protocol information.
 
-**Core principle:** No search without protocol. Use `scimesh workspace init --type slr` to create the workspace with protocol.
+**Core principle:** No search without protocol. Use `uvx scimesh workspace init --type slr` to create the workspace with protocol.
 
 ## Iron Rules
 
 1. **NO search without protocol** - Protocol MUST exist BEFORE any search
 2. **NO autonomous query building** - Query construction is INTERACTIVE; user approves each component
-3. **Use workspace commands** - Always use `scimesh workspace` commands for SLR
+3. **Use workspace commands** - Always use `uvx scimesh workspace` commands for SLR
 
 ## Workflow
 
@@ -119,14 +119,16 @@ These questions apply to ALL frameworks:
     "question": "What year range should papers be from?",
     "header": "Years",
     "options": [
-        {"label": "Last 5 years (Recommended)", "description": "2021-2026"},
-        {"label": "Last 10 years", "description": "2016-2026"},
-        {"label": "Last 3 years", "description": "2023-2026"},
+        {"label": "Last 5 years (Recommended)", "description": "Dynamic: based on current year"},
+        {"label": "Last 10 years", "description": "Dynamic: based on current year"},
+        {"label": "Last 3 years", "description": "Dynamic: based on current year"},
         {"label": "Custom range", "description": "You specify"}
     ],
     "multiSelect": False
 }
 ```
+
+**Note:** Compute the actual year range dynamically from the current date. For example, if today is 2026, "Last 5 years" means "2021-2026".
 
 **Question 4: Languages**
 ```python
@@ -142,35 +144,24 @@ These questions apply to ALL frameworks:
 }
 ```
 
-**Question 5-7: Study types (3 questions, same header)**
+**Question 5: Study types to include**
 ```python
 {
     "questions": [
         {
             "question": "Which study types to include?",
-            "header": "Study types",
+            "header": "Include",
             "options": [
                 {"label": "Primary research", "description": "Original experiments, empirical studies"},
                 {"label": "Systematic reviews", "description": "Systematic reviews, meta-analyses"},
-                {"label": "Scoping reviews", "description": "Scoping or mapping reviews"},
-                {"label": "Narrative reviews", "description": "Literature reviews, overviews"}
-            ],
-            "multiSelect": True
-        },
-        {
-            "question": "Which study types to include?",
-            "header": "Study types",
-            "options": [
                 {"label": "Conference papers", "description": "Full papers from conferences"},
-                {"label": "Preprints", "description": "arXiv, bioRxiv, medRxiv, SSRN"},
-                {"label": "Theses/dissertations", "description": "PhD, Master's theses"},
-                {"label": "Book chapters", "description": "Chapters from edited volumes"}
+                {"label": "Preprints", "description": "arXiv, bioRxiv, medRxiv, SSRN"}
             ],
             "multiSelect": True
         },
         {
             "question": "Which study types to EXCLUDE?",
-            "header": "Study types",
+            "header": "Exclude",
             "options": [
                 {"label": "Conference abstracts", "description": "Abstracts without full text"},
                 {"label": "Editorials/letters", "description": "Opinion pieces, letters to editor"},
@@ -183,7 +174,7 @@ These questions apply to ALL frameworks:
 }
 ```
 
-**Question 8: Minimum citations**
+**Question 6: Minimum citations**
 ```python
 {
     "question": "Set a minimum citation threshold?",
@@ -198,7 +189,7 @@ These questions apply to ALL frameworks:
 }
 ```
 
-**Question 9: Data/Code availability**
+**Question 7: Data/Code availability**
 ```python
 {
     "question": "Require open data or code?",
@@ -213,34 +204,22 @@ These questions apply to ALL frameworks:
 }
 ```
 
-**Question 10-11: Search providers (2 questions, same header)**
+**Question 8: Search providers**
 ```python
 {
-    "questions": [
-        {
-            "question": "Which providers to search?",
-            "header": "Providers",
-            "options": [
-                {"label": "arXiv", "description": "Preprints in CS, Physics, Math. Free full-text PDFs."},
-                {"label": "OpenAlex", "description": "200M+ works, open metadata, citation counts."},
-                {"label": "Semantic Scholar", "description": "AI/ML focus, citation graph, abstracts."}
-            ],
-            "multiSelect": True
-        },
-        {
-            "question": "Which providers to search?",
-            "header": "Providers",
-            "options": [
-                {"label": "arXiv", "description": "Preprints, especially for CS/ML/Physics."},
-                {"label": "Scopus", "description": "Requires SCOPUS_API_KEY environment variable."}
-            ],
-            "multiSelect": True
-        }
-    ]
+    "question": "Which providers to search?",
+    "header": "Providers",
+    "options": [
+        {"label": "OpenAlex (Recommended)", "description": "200M+ works, open metadata, citation counts."},
+        {"label": "Semantic Scholar", "description": "AI/ML focus, citation graph, abstracts."},
+        {"label": "arXiv", "description": "Preprints in CS, Physics, Math. Free full-text PDFs."},
+        {"label": "Scopus", "description": "Comprehensive coverage. Requires SCOPUS_API_KEY environment variable."}
+    ],
+    "multiSelect": True
 }
 ```
 
-**Question 12: Target pool size**
+**Question 9: Target pool size**
 ```python
 {
     "question": "How many papers do you want to screen?",
@@ -254,7 +233,7 @@ These questions apply to ALL frameworks:
 }
 ```
 
-**Question 13: Research question (free text)**
+**Question 10: Research question (free text)**
 ```python
 {
     "question": "Describe your research question:",
@@ -268,61 +247,84 @@ These questions apply to ALL frameworks:
 # User will select "Other" and type their actual question
 ```
 
-## Create Vault with Protocol
+## Create Workspace with Protocol
 
-After gathering all information via AskUserQuestion, create the workspace based on the selected framework:
+After gathering all information via AskUserQuestion, create the workspace in two steps:
 
-### For PICO Framework
+### Step 1: Initialize the workspace
 
 ```bash
 uvx scimesh workspace init {review_path}/ \
+  --type slr \
   --question "Research question here" \
   --framework pico \
-  --population "Population" \
-  --intervention "Intervention" \
-  --comparison "Comparison" \
-  --outcome "Outcome" \
-  --inclusion "First inclusion criterion" \
-  --inclusion "Second inclusion criterion" \
-  --exclusion "First exclusion criterion" \
-  --exclusion "Second exclusion criterion" \
   --databases "arxiv,openalex,semantic_scholar" \
-  --year-range "2020-2024"
+  --year-range "2021-2026"
 ```
 
-### For SPIDER Framework
+**Available flags for `workspace init`:**
+- `--type`: slr, exploration, collection (required for SLR)
+- `--question`: Research question
+- `--framework`: pico, spider, custom
+- `--databases`: Comma-separated provider list
+- `--year-range`: Year range string
+
+### Step 2: Add inclusion and exclusion criteria
 
 ```bash
-uvx scimesh workspace init {review_path}/ \
-  --question "Research question here" \
-  --framework spider \
-  --sample "Sample description" \
-  --phenomenon "Phenomenon of interest" \
-  --design "Research design" \
-  --evaluation "Evaluation criteria" \
-  --research-type "qualitative" \
-  --inclusion "First inclusion criterion" \
-  --exclusion "First exclusion criterion" \
-  --databases "arxiv,openalex,semantic_scholar" \
-  --year-range "2020-2024"
+# Add inclusion criteria (one call with all criteria)
+uvx scimesh workspace add-inclusion {review_path}/ \
+  "First inclusion criterion" \
+  "Second inclusion criterion"
+
+# Add exclusion criteria
+uvx scimesh workspace add-exclusion {review_path}/ \
+  "First exclusion criterion" \
+  "Second exclusion criterion"
 ```
 
-### For Custom Framework
+### Step 3: Set framework-specific fields
 
-```bash
-uvx scimesh workspace init {review_path}/ \
-  --question "Research question here" \
-  --framework custom \
-  --field "population:Description of population" \
-  --field "method:Description of method" \
-  --field "outcome:Description of outcome" \
-  --inclusion "First inclusion criterion" \
-  --exclusion "First exclusion criterion" \
-  --databases "arxiv,openalex,semantic_scholar" \
-  --year-range "2020-2024"
+The `workspace init` creates the workspace with an empty framework. To populate framework fields (PICO, SPIDER, or Custom), **edit the index.yaml directly** using the Edit tool:
+
+#### For PICO Framework
+
+Edit `{review_path}/index.yaml` to set:
+```yaml
+framework:
+  type: pico
+  fields:
+    population: "Description of population"
+    intervention: "Description of intervention"
+    comparison: "Description of comparison"
+    outcome: "Description of outcome"
 ```
 
-**Note:** Use `--inclusion` and `--exclusion` multiple times for multiple criteria. For Custom framework, use `--field` multiple times with the format `fieldname:description`.
+#### For SPIDER Framework
+
+Edit `{review_path}/index.yaml` to set:
+```yaml
+framework:
+  type: spider
+  fields:
+    sample: "Description of sample"
+    phenomenon: "Description of phenomenon"
+    design: "Description of design"
+    evaluation: "Description of evaluation"
+    research_type: "qualitative"
+```
+
+#### For Custom Framework
+
+Edit `{review_path}/index.yaml` to set:
+```yaml
+framework:
+  type: custom
+  fields:
+    population: "Description"
+    method: "Description"
+    outcome: "Description"
+```
 
 ## Directory Structure
 
@@ -330,10 +332,9 @@ The workspace creates this structure:
 
 ```
 {review_path}/
-├── index.yaml       # Protocol + stats
-├── searches.yaml    # Search history (queries, results)
+├── index.yaml       # Workspace config + stats
+├── log.yaml         # Search history (queries, results)
 ├── papers.yaml      # Paper list with search_ids
-├── synthesis.md     # Final PRISMA + synthesis (generated later)
 └── papers/
     └── {year}/              # Organized by publication year
         └── {paper-slug}/
@@ -343,29 +344,31 @@ The workspace creates this structure:
 
 **Note:** `{review_path}` is user-defined. Examples: `./reviews/my-slr/`, `~/Documents/reviews/transformers-2024/`
 
-## Vault File Structure
+## Workspace File Structure
 
-**index.yaml** - Protocol and stats (structure varies by framework):
+**index.yaml** - Workspace config and stats:
 
-### PICO Framework
+### SLR Workspace (actual structure)
 ```yaml
-protocol:
-  framework: pico
-  question: "Research question here"
-  population: ""      # P - Population/Problem
-  intervention: ""    # I - Intervention/Exposure
-  comparison: ""      # C - Comparison
-  outcome: ""         # O - Outcome
-  inclusion:
-    - "criterion 1"
-  exclusion:
-    - "criterion 1"
+type: slr
+question: "Research question here"
+framework:
+  type: pico
+  fields:
+    population: ""
+    intervention: ""
+    comparison: ""
+    outcome: ""
+constraints:
   databases:
     - arxiv
     - openalex
     - semantic_scholar
   year_range: "2021-2026"
-
+inclusion:
+  - "criterion 1"
+exclusion:
+  - "criterion 1"
 stats:
   total: 0
   included: 0
@@ -375,64 +378,10 @@ stats:
   with_pdf: 0
 ```
 
-### SPIDER Framework
-```yaml
-protocol:
-  framework: spider
-  question: "Research question here"
-  sample: ""          # S - Sample
-  phenomenon: ""      # PI - Phenomenon of Interest
-  design: ""          # D - Design
-  evaluation: ""      # E - Evaluation
-  research_type: ""   # R - Research type
-  inclusion:
-    - "criterion 1"
-  exclusion:
-    - "criterion 1"
-  databases:
-    - arxiv
-    - openalex
-  year_range: "2021-2026"
-
-stats:
-  total: 0
-  included: 0
-  excluded: 0
-  maybe: 0
-  unscreened: 0
-  with_pdf: 0
-```
-
-### Custom Framework
-```yaml
-protocol:
-  framework: custom
-  question: "Research question here"
-  fields:
-    population: "Description"
-    method: "Description"
-    outcome: "Description"
-  inclusion:
-    - "criterion 1"
-  exclusion:
-    - "criterion 1"
-  databases:
-    - arxiv
-    - openalex
-  year_range: "2021-2026"
-
-stats:
-  total: 0
-  included: 0
-  excluded: 0
-  maybe: 0
-  unscreened: 0
-  with_pdf: 0
-```
-
-**searches.yaml** - Search history:
+**log.yaml** - Search history:
 ```yaml
 - id: b135ec76a5e4
+  type: search
   query: "TITLE(attention) AND PUBYEAR > 2022"
   providers: [arxiv, openalex]
   executed_at: "2026-01-30T10:00:00Z"
@@ -443,7 +392,7 @@ stats:
 
 **papers.yaml** - Paper list with traceability:
 ```yaml
-- path: 2024-yang-simulating-hard-attention
+- path: 2024/yang-simulating-hard-attention
   doi: "10.1234/example"
   title: "Simulating Hard Attention..."
   status: unscreened
@@ -455,7 +404,7 @@ stats:
 After init, use these commands to modify:
 
 ```bash
-# Modify protocol fields
+# Modify workspace-level fields
 uvx scimesh workspace set {review_path}/ --question "New RQ" --year-range "2020-2024"
 
 # Add inclusion criteria
@@ -464,20 +413,19 @@ uvx scimesh workspace add-inclusion {review_path}/ "Must use deep learning"
 # Add exclusion criteria
 uvx scimesh workspace add-exclusion {review_path}/ "Survey papers"
 
-# Add custom fields (for custom framework)
-uvx scimesh workspace set {review_path}/ --field "newfield:Description"
+# For framework-specific fields, edit index.yaml directly with the Edit tool
 ```
 
 ## Validation
 
 Before proceeding to search (scimesh:searching), verify:
-- [ ] Vault exists with index.yaml
-- [ ] Framework is specified (pico, spider, or custom)
+- [ ] Workspace exists with index.yaml
+- [ ] Framework is specified (pico, spider, or custom) with fields populated
 - [ ] At least 1 inclusion criterion defined
 - [ ] At least 1 exclusion criterion defined
 - [ ] Research question is filled
 
-**If validation fails:** Run `workspace init --type slr` or use `workspace set`/`add-*` to complete protocol.
+**If validation fails:** Run `workspace init --type slr` or use `workspace set`/`add-*`/Edit to complete protocol.
 
 ## Next Step
 

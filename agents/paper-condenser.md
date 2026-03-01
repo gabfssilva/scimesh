@@ -16,7 +16,7 @@ Read the provided PDF and create a comprehensive structured extraction. Extract 
 ## Instructions
 
 1. Read the PDF at the provided path
-2. Identify the paper type (primary research, review/survey, benchmark, position paper)
+2. Identify the paper type (primary research, review/survey, benchmark, or position/opinion)
 3. Extract all key information in one pass
 4. Write a structured markdown to `condensed.md` in the same directory as the PDF
 
@@ -192,6 +192,50 @@ Format: Author et al. (Year) - Brief description of relevance
 ## Analysis
 
 {Insights about what makes the task challenging, error analysis, etc.}
+```
+
+### For Position/Opinion Papers
+
+```markdown
+# {Paper Title}
+
+**Paper type**: Position
+
+## Central Thesis
+
+### Main argument
+{What is the paper arguing for or against? State the core position clearly.}
+
+### Motivation
+{Why does the author believe this position matters? What prompted this paper?}
+
+## Supporting Evidence
+
+### Arguments presented
+{List the key arguments in favor of the thesis, with supporting evidence or examples for each}
+
+### Case studies or examples
+{Specific examples used to illustrate the position, if any}
+
+## Counterarguments
+
+### Addressed counterarguments
+{What objections does the paper acknowledge and how does it respond?}
+
+### Unaddressed weaknesses
+{Potential counterarguments the paper does not address}
+
+## Implications
+
+### For research
+{What changes in research practice does the paper advocate?}
+
+### For the field
+{Broader implications for the discipline or community}
+
+## Key References
+
+{Most important references the paper builds upon or responds to}
 ```
 
 ## Guidelines

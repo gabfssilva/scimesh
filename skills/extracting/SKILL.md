@@ -66,8 +66,8 @@ digraph extraction {
 
 ```python
 # Process multiple papers in parallel - each gets a condenser
-Task(
-    subagent_type="paper-condenser",
+Agent(
+    subagent_type="scimesh:paper-condenser",
     prompt=f"Extract from: {paper_path}/fulltext.pdf\nWrite to: {paper_path}/condensed.md",
     description=f"Condense: {paper_slug}"
 )
@@ -76,8 +76,8 @@ Task(
 **Step 2: After condenser completes, launch tagger:**
 
 ```python
-Task(
-    subagent_type="paper-tagger",
+Agent(
+    subagent_type="scimesh:paper-tagger",
     prompt=f"""Add frontmatter to condensed paper:
 Condensed: {paper_path}/condensed.md
 Protocol: {review_path}/index.yaml
@@ -104,10 +104,10 @@ Batch 1: Papers 1-10
 **Maximum parallelism:** Launch all condensers for a batch in a single message:
 
 ```python
-# Single message with multiple Task calls
-Task(subagent_type="paper-condenser", prompt=f"...", description=f"Condense: paper1")
-Task(subagent_type="paper-condenser", prompt=f"...", description=f"Condense: paper2")
-Task(subagent_type="paper-condenser", prompt=f"...", description=f"Condense: paper3")
+# Single message with multiple Agent calls
+Agent(subagent_type="scimesh:paper-condenser", prompt=f"...", description=f"Condense: paper1")
+Agent(subagent_type="scimesh:paper-condenser", prompt=f"...", description=f"Condense: paper2")
+Agent(subagent_type="scimesh:paper-condenser", prompt=f"...", description=f"Condense: paper3")
 # ... up to 10 papers
 ```
 
@@ -128,19 +128,12 @@ for paper in included_papers_with_pdf:
 
 **Skip papers without PDF.** Before starting extraction:
 
-```bash
-# List papers with PDFs (organized by year)
-find {review_path}/papers -name "fulltext.pdf" -exec dirname {} \;
-
-# Example: papers/2023/smith-diffusion-tabular/fulltext.pdf
+```python
+# Use Glob to find papers with PDFs
+Glob(pattern="{review_path}/papers/**/fulltext.pdf")
 ```
 
-If a paper doesn't have a PDF, mark it in the paper's index.yaml:
-
-```yaml
-extraction_status: skipped
-extraction_note: "No PDF available"
-```
+Compare against included papers to determine which are missing PDFs. Papers without PDF are simply skipped during extraction.
 
 ## Pre-Extraction Check
 
