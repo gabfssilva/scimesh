@@ -85,7 +85,7 @@ WHILE total_papers < limit AND saturation_count < saturation_threshold:
        For each new paper (no condensed.md file):
 
          Step A - Condense (parallel across papers):
-         Agent(subagent_type="scimesh:paper-condenser", prompt="""
+         Agent(subagent_type="scimesh:paper-briefer", prompt="""
            Extract from: {workspace_path}/{paper_path}/fulltext.pdf
            Write to: {workspace_path}/{paper_path}/condensed.md
          """)

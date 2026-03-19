@@ -31,7 +31,7 @@ For each paper in the list, read:
 {workspace_path}/{paper_path}/condensed.md
 ```
 
-This file has YAML frontmatter (added by paper-tagger) followed by the full extraction (from paper-condenser).
+This file has YAML frontmatter (added by paper-tagger) followed by the briefing (from paper-briefer).
 
 Extract from frontmatter:
 - title, authors, year

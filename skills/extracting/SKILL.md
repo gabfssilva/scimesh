@@ -37,7 +37,7 @@ After screening completes, extract evidence from all INCLUDED papers using **par
 
 | Agent | Responsibility | Input | Output |
 |-------|----------------|-------|--------|
-| `paper-condenser` | Extract all content (problem, method, results) in one pass | PDF | `condensed.md` (body) |
+| `paper-briefer` | Quick briefing for classification and tagging | PDF | `condensed.md` (body) |
 | `paper-tagger` | Add frontmatter with tags and relevance | `condensed.md` + protocol | `condensed.md` (with frontmatter) |
 
 ## Workflow
@@ -50,7 +50,7 @@ digraph extraction {
     screen_done [label="Screening complete\n(N included papers)"];
     check_pdf [label="Filter: only papers\nwith fulltext.pdf"];
     dispatch [label="For each paper:\nDispatch condenser"];
-    condense [label="paper-condenser\n→ condensed.md (body)"];
+    condense [label="paper-briefer\n→ condensed.md (body)"];
     tag [label="paper-tagger\n→ condensed.md (add frontmatter)"];
 
     screen_done -> check_pdf;
@@ -67,7 +67,7 @@ digraph extraction {
 ```python
 # Process multiple papers in parallel - each gets a condenser
 Agent(
-    subagent_type="scimesh:paper-condenser",
+    subagent_type="scimesh:paper-briefer",
     prompt=f"Extract from: {paper_path}/fulltext.pdf\nWrite to: {paper_path}/condensed.md",
     description=f"Condense: {paper_slug}"
 )
@@ -105,9 +105,9 @@ Batch 1: Papers 1-10
 
 ```python
 # Single message with multiple Agent calls
-Agent(subagent_type="scimesh:paper-condenser", prompt=f"...", description=f"Condense: paper1")
-Agent(subagent_type="scimesh:paper-condenser", prompt=f"...", description=f"Condense: paper2")
-Agent(subagent_type="scimesh:paper-condenser", prompt=f"...", description=f"Condense: paper3")
+Agent(subagent_type="scimesh:paper-briefer", prompt=f"...", description=f"Condense: paper1")
+Agent(subagent_type="scimesh:paper-briefer", prompt=f"...", description=f"Condense: paper2")
+Agent(subagent_type="scimesh:paper-briefer", prompt=f"...", description=f"Condense: paper3")
 # ... up to 10 papers
 ```
 
