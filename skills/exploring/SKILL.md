@@ -73,13 +73,11 @@ WHILE total_papers < limit AND saturation_count < saturation_threshold:
        - Else: pick from suggested_queries or explore new subtopic
        - Avoid repeating similar queries
 
-    3. DISPATCH SEARCH SUBAGENT
-       Agent(subagent_type="scimesh:search", prompt="""
-         workspace_path: {path}
-         query: {decided_query}
-         providers: {providers}
-         max_results: 50
-       """)
+    3. EXECUTE SEARCH
+       ```bash
+       uvx scimesh workspace search {path} "{decided_query}" -p {providers} -n 50
+       ```
+       Then read `{path}/papers.yaml` to identify new papers.
 
     4. DISPATCH CONDENSE + TAG SUBAGENTS
        For each new paper (no condensed.md file):
