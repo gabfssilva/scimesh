@@ -154,4 +154,6 @@ Ask user before starting:
 
 ## Next Step
 
-After extraction is complete, use **scimesh:synthesizing** to generate PRISMA and synthesis.
+After extraction is complete:
+- Use **scimesh:appraising** for deep critical appraisal of included papers (6 opus agents + fact-checker + synthesizer per paper).
+- Use **scimesh:synthesizing** to generate PRISMA and synthesis.
