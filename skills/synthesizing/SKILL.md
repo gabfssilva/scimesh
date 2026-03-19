@@ -152,23 +152,6 @@ After PRISMA generation, write a **narrative synthesis** that ties the included 
    - Note where papers agree, disagree, or leave gaps
 4. **Write a cross-cutting discussion** that connects themes and identifies the overall state of knowledge.
 
-### When appraisal WAS done (analysis/analysis.md exists)
-
-In addition to condensed.md, check for `analysis/analysis.md` in each paper directory:
-
-```python
-Glob(pattern="{review_path}/papers/**/analysis/analysis.md")
-```
-
-When appraisal data is available, the narrative synthesis should incorporate:
-- **Epistemic honesty scores** -- weight findings from papers with higher scores
-- **Fragility verdicts** -- flag conclusions based on fragile evidence
-- **Overreaching claims** -- do not propagate claims flagged as overreaching
-- **Reproducibility scores** -- note when key findings come from poorly reproducible studies
-- **Silent assumptions** -- mention when multiple papers share the same undefended assumption
-
-This produces a substantially richer synthesis that goes beyond "what papers say" to "how trustworthy is what papers say."
-
 ### When extraction was NOT done (abstracts only)
 
 1. **Read index.yaml** for each included paper. Use the `title`, `abstract`, `year`, and any screening `notes` fields.
