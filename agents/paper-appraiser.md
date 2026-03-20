@@ -49,7 +49,7 @@ corrections_applied: [{list of agent names where has_corrections: true, or empty
 # {Paper Title}
 
 **Authors:** {authors} | **Year:** {year}
-**Reproducibility:** {high|medium|low} | **Epistemic Honesty:** {1-5}/5 | **Fragility:** {robust|moderately_fragile|highly_fragile}
+**Reproducibility:** {high|medium|low} | **Epistemic Honesty:** {0-8}/8 | **Fragility:** {0-6}/6
 
 ---
 
@@ -196,7 +196,8 @@ corrections_applied: [{list of agent names where has_corrections: true, or empty
 
 ## Verdict
 
-> **Epistemic honesty:** {score}/5
+> **Epistemic honesty:** {score}/8
+> **Fragility:** {score}/6
 > **Contribution despite flaws:** {contribution_despite_flaws}
 > **One-sentence verdict:** {one_sentence_verdict}
 ~~~

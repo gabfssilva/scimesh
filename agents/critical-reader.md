@@ -30,8 +30,8 @@ Write a markdown file with YAML frontmatter and fixed sections. Follow this temp
 ~~~markdown
 ---
 agent: critical-reader
-epistemic_honesty_score: <1-5>
-fragility_verdict: "<robust | moderately_fragile | highly_fragile>"
+epistemic_honesty_score: <0-8>
+fragility_score: <0-6>
 ---
 
 ## Claims vs Evidence
@@ -75,6 +75,19 @@ fragility_verdict: "<robust | moderately_fragile | highly_fragile>"
 
 **Fragility note:** <synthesis in 1-2 sentences>
 
+### Fragility Checklist
+
+For each criterion, answer Yes or No with a verbatim quote or specific reference from the paper as evidence. The fragility score is the count of "Yes" answers.
+
+| # | Criterion | Answer | Evidence |
+|---|-----------|--------|----------|
+| 1 | Results validated on more than one dataset or domain | <Yes/No> | <quote or "Not found"> |
+| 2 | Method does not rely on domain-specific hyperparameter tuning | <Yes/No> | <quote or "Not found"> |
+| 3 | Ablation shows no single component accounts for majority of gains | <Yes/No> | <quote or "Not found"> |
+| 4 | Results are consistent across different evaluation metrics | <Yes/No> | <quote or "Not found"> |
+| 5 | Method is tested on or accounts for distribution shift | <Yes/No> | <quote or "Not found"> |
+| 6 | Sample sizes are adequate for the statistical claims made | <Yes/No> | <quote or "Not found"> |
+
 ## Debate Positioning
 
 **Conversation entered:** <what debate/field this paper touches>
@@ -95,9 +108,25 @@ fragility_verdict: "<robust | moderately_fragile | highly_fragile>"
 |--------------|--------------|-----------------|
 | <paper or research line> | <why expected> | <tradition | recency | discipline | language | ideological> |
 
+## Epistemic Honesty
+
+For each criterion, answer Yes or No with a verbatim quote or specific reference from the paper as evidence. The epistemic honesty score is the count of "Yes" answers.
+
+| # | Criterion | Answer | Evidence |
+|---|-----------|--------|----------|
+| 1 | Authors explicitly state study limitations | <Yes/No> | <quote or "Not found"> |
+| 2 | Claims are qualified with appropriate hedging language | <Yes/No> | <quote or "Not found"> |
+| 3 | Negative or null results are reported | <Yes/No> | <quote or "Not found"> |
+| 4 | Effect sizes are not exaggerated beyond data support | <Yes/No> | <quote or "Not found"> |
+| 5 | Generalizability boundaries are acknowledged | <Yes/No> | <quote or "Not found"> |
+| 6 | Alternative explanations for results are discussed | <Yes/No> | <quote or "Not found"> |
+| 7 | Conflicts of interest are disclosed | <Yes/No> | <quote or "Not found"> |
+| 8 | Statistical significance is not conflated with practical significance | <Yes/No> | <quote or "Not found"> |
+
 ## Verdict
 
-**Epistemic honesty:** <score>/5
+**Epistemic honesty:** <score>/8
+**Fragility:** <score>/6
 **Contribution despite flaws:** <what this paper genuinely advances>
 **One-sentence verdict:** <verdict from an experienced reviewer>
 ~~~
@@ -115,10 +144,7 @@ fragility_verdict: "<robust | moderately_fragile | highly_fragile>"
 
 ### Generalizability Stress Test
 - Propose 2-4 realistic scenarios where someone would apply this method. Assess whether results would hold. Use the table.
-- **fragility_verdict** (frontmatter):
-  - **robust**: Results likely hold across reasonable variations
-  - **moderately_fragile**: Results hold in similar settings but may break with domain shift
-  - **highly_fragile**: Results depend heavily on specific experimental conditions
+- **Fragility Checklist**: Answer each criterion with Yes/No. You **must** provide a verbatim quote or specific section reference as evidence for each answer. "Not found" is a valid evidence entry for No answers. The **fragility_score** (frontmatter) is the count of "Yes" answers (0-6).
 
 ### Debate Positioning
 - Identify key papers this work responds to, whether explicitly or implicitly.
@@ -128,8 +154,12 @@ fragility_verdict: "<robust | moderately_fragile | highly_fragile>"
 - Only flag truly important omissions — works any knowledgeable reviewer would expect. Use the table.
 - **Blind Spot Type**: tradition (foundational work), recency (important recent work), discipline (adjacent field), language (other languages), ideological (competing school of thought).
 
+### Epistemic Honesty
+- Answer each criterion with Yes/No. You **must** provide a verbatim quote or specific section reference as evidence for each answer. "Not found" is a valid evidence entry for No answers.
+- The **epistemic_honesty_score** (frontmatter) is the count of "Yes" answers (0-8).
+- Be strict: a criterion is "Yes" only if the paper clearly and explicitly addresses it. Vague or passing mentions do not count.
+
 ### Verdict
-- **epistemic_honesty_score** (frontmatter): 1 = systematic overclaiming, 2 = significant gaps, 3 = generally honest with some overclaiming, 4 = careful claims, 5 = exemplary epistemic hygiene.
 - **Contribution despite flaws**: Even flawed papers contribute something. Identify it.
 - **One-sentence verdict**: Write as an experienced Area Chair would — direct, fair, and substantive.
 
