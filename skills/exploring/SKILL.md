@@ -50,6 +50,18 @@ User can override: `exploring: {theme} --limit 100 --providers openalex`
 
 ## Execution Flow
 
+### Phase 0: Ensure Permissions
+
+Before dispatching background subagents, use the Skill tool to grant
+Write permission for the workspace path:
+
+```
+Skill(skill="update-config", args="allow Write to {workspace_path}/** in project settings")
+```
+
+This ensures background subagents can write condensed.md and other
+files without permission being auto-denied.
+
 ### Phase 1: Initialize
 
 ```bash
