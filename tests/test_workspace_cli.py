@@ -379,7 +379,7 @@ def test_workspace_finish_fails_for_non_exploration(tmp_path, capsys):
 
     assert exc_info.value.code == 1
     captured = capsys.readouterr()
-    assert "finish command is only for exploration workspaces" in captured.err
+    assert "finish only works with exploration workspaces" in captured.err
 
 
 def test_workspace_search_not_found(tmp_path, capsys):

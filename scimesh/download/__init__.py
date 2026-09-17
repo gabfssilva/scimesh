@@ -172,6 +172,63 @@ async def _download_single(
     )
 
 
+def parse_host_concurrency(value: str | None) -> tuple[dict[str, int] | None, int | None]:
+    """Parse host concurrency string into dict and/or default.
+
+    Args:
+        value: Either an integer string ("3") for default limit, or
+            per-host config like "arxiv.org=2,api.unpaywall.org=3".
+            Can also combine: "3,arxiv.org=2" (default 3, arxiv 2).
+
+    Returns:
+        Tuple of (per-host limits dict, default limit).
+    """
+    if not value:
+        return None, None
+
+    try:
+        return None, int(value)
+    except ValueError:
+        pass
+
+    result: dict[str, int] = {}
+    default: int | None = None
+    for part in value.split(","):
+        part = part.strip()
+        if "=" in part:
+            host, limit = part.split("=", 1)
+            try:
+                result[host.strip()] = int(limit.strip())
+            except ValueError:
+                pass
+        else:
+            try:
+                default = int(part)
+            except ValueError:
+                pass
+
+    return (result if result else None), default
+
+
+def create_downloader(
+    host_concurrency: str | None = None,
+    use_scihub: bool = False,
+) -> FallbackDownloader:
+    """Create a FallbackDownloader with OpenAccess, optional Playwright, and optionally SciHub."""
+    host_limits, default_limit = parse_host_concurrency(host_concurrency)
+    host_semaphores = None
+    if host_limits or default_limit:
+        host_semaphores = HostSemaphores(host_limits, default=default_limit)
+
+    downloaders: list[Downloader] = [OpenAccessDownloader(host_semaphores=host_semaphores)]
+    if PLAYWRIGHT_AVAILABLE and PlaywrightDownloader is not None:
+        downloaders.append(PlaywrightDownloader(host_semaphores=host_semaphores))
+    if use_scihub:
+        downloaders.append(SciHubDownloader(host_semaphores=host_semaphores))
+
+    return FallbackDownloader(*downloaders)
+
+
 __all__ = [
     "Downloader",
     "DownloadResult",
@@ -183,6 +240,8 @@ __all__ = [
     "PlaywrightConfig",
     "PlaywrightDownloader",
     "SciHubDownloader",
+    "create_downloader",
     "download_papers",
     "make_filename",
+    "parse_host_concurrency",
 ]

@@ -15,6 +15,12 @@ from scimesh.workspace.models import (
     Workspace,
     parse_workspace,
 )
+from scimesh.workspace.operations import (
+    build_prisma_report,
+    ingest_papers,
+    load_or_exit,
+    load_strict_or_exit,
+)
 from scimesh.workspace.repository import (
     WorkspaceExistsError,
     WorkspaceNotFoundError,
@@ -37,5 +43,9 @@ __all__ = [
     "WorkspaceExistsError",
     "WorkspaceNotFoundError",
     "YamlWorkspaceRepository",
+    "build_prisma_report",
+    "ingest_papers",
+    "load_or_exit",
+    "load_strict_or_exit",
     "parse_workspace",
 ]

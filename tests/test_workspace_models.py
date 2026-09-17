@@ -386,11 +386,11 @@ class TestLogEntry:
             providers=["semantic_scholar"],
             executed_at=now,
             seed_doi="10.1234/test",
-            direction="backward",
+            direction="in",
         )
         assert entry.type == "snowball"
         assert entry.seed_doi == "10.1234/test"
-        assert entry.direction == "backward"
+        assert entry.direction == "in"
 
     def test_creation_manual(self):
         now = datetime.now()

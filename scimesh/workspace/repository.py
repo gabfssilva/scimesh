@@ -11,6 +11,7 @@ from scimesh.workspace.models import (
     LogEntry,
     PaperEntry,
     PaperIndex,
+    PaperStatus,
     SLRWorkspace,
     Stats,
     parse_workspace,
@@ -111,7 +112,7 @@ class YamlWorkspaceRepository:
     def paper_exists(self, path: str) -> bool:
         return self._paper_index_path(path).exists()
 
-    def set_paper_screening(self, paper_path: str, status: str, reason: str) -> None:
+    def set_paper_screening(self, paper_path: str, status: PaperStatus, reason: str) -> None:
         """Set screening status for a paper.
 
         Args:

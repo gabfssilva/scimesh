@@ -5,13 +5,13 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, cast
+from typing import Annotated, cast
 
 import cyclopts
 import streamish as st
 
 from scimesh import search as do_search
-from scimesh.download import download_papers
+from scimesh.download import create_downloader, download_papers
 from scimesh.export import get_exporter
 from scimesh.export.tree import TreeExporter
 from scimesh.models import Paper, SearchResult, merge_papers
@@ -19,9 +19,6 @@ from scimesh.providers import Arxiv, OpenAlex, Scopus, SemanticScholar
 from scimesh.providers.base import Provider
 from scimesh.search import OnError
 from scimesh.workspace.cli import workspace_app
-
-if TYPE_CHECKING:
-    from scimesh.download import FallbackDownloader
 
 app = cyclopts.App(
     name="scimesh",
@@ -60,73 +57,6 @@ CITATIONS_PROVIDERS = {
     "scopus": Scopus,
     "semantic_scholar": SemanticScholar,
 }
-
-
-def _parse_host_concurrency(value: str | None) -> tuple[dict[str, int] | None, int | None]:
-    """Parse host concurrency string into dict and/or default.
-
-    Args:
-        value: Either an integer string ("3") for default limit, or
-            per-host config like "arxiv.org=2,api.unpaywall.org=3".
-            Can also combine: "3,arxiv.org=2" (default 3, arxiv 2).
-
-    Returns:
-        Tuple of (per-host limits dict, default limit).
-    """
-    if not value:
-        return None, None
-
-    try:
-        return None, int(value)
-    except ValueError:
-        pass
-
-    result: dict[str, int] = {}
-    default: int | None = None
-    for part in value.split(","):
-        part = part.strip()
-        if "=" in part:
-            host, limit = part.split("=", 1)
-            try:
-                result[host.strip()] = int(limit.strip())
-            except ValueError:
-                pass
-        else:
-            try:
-                default = int(part)
-            except ValueError:
-                pass
-
-    return (result if result else None), default
-
-
-def _create_downloader(
-    host_concurrency: str | None = None,
-    use_scihub: bool = False,
-) -> FallbackDownloader:
-    """Create a FallbackDownloader with OpenAccess, Playwright, and optionally SciHub."""
-    from scimesh.download import (
-        Downloader,
-        FallbackDownloader,
-        HostSemaphores,
-        OpenAccessDownloader,
-        PlaywrightDownloader,
-        SciHubDownloader,
-    )
-
-    host_limits, default_limit = _parse_host_concurrency(host_concurrency)
-    host_semaphores = None
-    if host_limits or default_limit:
-        host_semaphores = HostSemaphores(host_limits, default=default_limit)
-
-    downloaders: list[Downloader] = [
-        OpenAccessDownloader(host_semaphores=host_semaphores),
-        PlaywrightDownloader(host_semaphores=host_semaphores),
-    ]
-    if use_scihub:
-        downloaders.append(SciHubDownloader(host_semaphores=host_semaphores))
-
-    return FallbackDownloader(*downloaders)
 
 
 async def _stream_search(
@@ -244,7 +174,7 @@ def search(
         sys.exit(1)
 
     provider_instances: list[Provider] = []
-    downloader = _create_downloader(host_concurrency, scihub) if local_fulltext_indexing else None
+    downloader = create_downloader(host_concurrency, scihub) if local_fulltext_indexing else None
 
     for p in providers:
         if downloader and p == "semantic_scholar":
@@ -272,7 +202,7 @@ def search(
         assert output is not None
 
         async def _export_vault() -> int:
-            downloader = _create_downloader(host_concurrency, scihub)
+            downloader = create_downloader(host_concurrency, scihub)
 
             stream = do_search(
                 query,
@@ -396,7 +326,7 @@ async def _run_downloads(
     host_concurrency: str | None = None,
 ) -> tuple[int, int]:
     """Run downloads and print progress. Returns (success_count, fail_count)."""
-    downloader = _create_downloader(host_concurrency, use_scihub)
+    downloader = create_downloader(host_concurrency, use_scihub)
 
     success_count = 0
     fail_count = 0

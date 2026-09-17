@@ -125,11 +125,14 @@ class LogEntry(BaseModel):
     executed_at: datetime
     results: SearchResults | None = None
     seed_doi: str | None = None
-    direction: str | None = None
+    direction: Literal["in", "out", "both"] | None = None
     notes: str | None = None
     subtopics: list[str] = Field(default_factory=list)
     suggested_queries: list[str] = Field(default_factory=list)
     saturation: bool | None = None
+
+
+PaperStatus = Literal["unscreened", "included", "excluded", "maybe"]
 
 
 class PaperEntry(BaseModel):
@@ -138,7 +141,7 @@ class PaperEntry(BaseModel):
     path: str
     doi: str
     title: str
-    status: str = "unscreened"
+    status: PaperStatus = "unscreened"
     search_ids: list[str] = Field(default_factory=list)
 
 

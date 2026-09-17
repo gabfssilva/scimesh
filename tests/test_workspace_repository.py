@@ -144,7 +144,7 @@ class TestYamlWorkspaceRepositoryLog:
                 providers=["semantic_scholar"],
                 executed_at=now,
                 seed_doi="10.1234/test",
-                direction="backward",
+                direction="in",
             ),
         ]
         repo.save_log(entries)
