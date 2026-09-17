@@ -137,8 +137,12 @@ class PlaywrightDownloader(Downloader):
     async def __aenter__(self) -> Self:
         await super().__aenter__()
         if self._available:
-            self._playwright = await async_playwright().start()  # type: ignore[misc]
-            self._browser = await self._launch_browser()
+            try:
+                self._playwright = await async_playwright().start()  # type: ignore[misc]
+                self._browser = await self._launch_browser()
+            except BaseException:
+                await self.__aexit__()
+                raise
         return self
 
     async def _launch_browser(self) -> Browser:

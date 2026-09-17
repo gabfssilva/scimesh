@@ -514,44 +514,18 @@ class OpenAlex(Provider):
 
         work_id = openalex_id.split("/")[-1]
 
-        params: dict[str, str | int] = {
-            "per_page": min(max_results, 200),
-        }
-        if self._mailto:
-            params["mailto"] = self._mailto
+        filters: list[str] = []
+        if direction in ("in", "both"):
+            filters.append(f"cites:{work_id}")
+        if direction in ("out", "both"):
+            filters.append(f"cited_by:{work_id}")
 
         count = 0
-
-        if direction in ("in", "both"):
-            params["filter"] = f"cites:{work_id}"
-            url = f"{self.BASE_URL}?{urlencode(params)}"
-            logger.debug("Fetching citing papers: %s", url)
-
-            response = await self._client.get(url)
-            response.raise_for_status()
-            data = response.json()
-
-            for work in data.get("results", []):
+        for filter_str in filters:
+            if count >= max_results:
+                return
+            async for parsed in self._execute_search("", filter_str):
+                yield parsed
+                count += 1
                 if count >= max_results:
                     return
-                parsed = self._parse_work(work)
-                if parsed:
-                    yield parsed
-                    count += 1
-
-        if direction in ("out", "both"):
-            params["filter"] = f"cited_by:{work_id}"
-            url = f"{self.BASE_URL}?{urlencode(params)}"
-            logger.debug("Fetching referenced papers: %s", url)
-
-            response = await self._client.get(url)
-            response.raise_for_status()
-            data = response.json()
-
-            for work in data.get("results", []):
-                if count >= max_results:
-                    return
-                parsed = self._parse_work(work)
-                if parsed:
-                    yield parsed
-                    count += 1

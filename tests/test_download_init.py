@@ -1,6 +1,8 @@
 # tests/test_download_init.py
 """Tests for download module __init__.py functionality."""
 
+import asyncio
+
 import pytest
 
 from scimesh.download import (
@@ -292,3 +294,68 @@ class TestDownloadPapers:
         # Should be exhausted
         with pytest.raises(StopAsyncIteration):
             await gen.__anext__()
+
+
+class LifecycleDownloader(Downloader):
+    """Downloader that fails if used while closed and counts open/close calls."""
+
+    name = "lifecycle"
+
+    def __init__(self, fail_start: bool = False):
+        super().__init__()
+        self.fail_start = fail_start
+        self.enters = 0
+        self.exits = 0
+        self.is_open = False
+
+    async def __aenter__(self):
+        if self.fail_start:
+            raise RuntimeError("browser not found")
+        self.enters += 1
+        self.is_open = True
+        return self
+
+    async def __aexit__(self, *args):
+        self.exits += 1
+        self.is_open = False
+
+    async def download(self, doi: str) -> bytes | None:
+        await asyncio.sleep(0.01)
+        if not self.is_open:
+            raise RuntimeError("downloader closed while in use")
+        return b"%PDF-1.4"
+
+
+class TestDownloadPapersLifecycle:
+    @pytest.mark.asyncio
+    async def test_opens_downloaders_once_for_concurrent_batch(self, tmp_path):
+        downloader = LifecycleDownloader()
+        dois = [f"10.1234/paper{i}" for i in range(10)]
+
+        results = [
+            r
+            async for r in download_papers(
+                dois, tmp_path, downloaders=[downloader], use_cache=False, max_concurrency=5
+            )
+        ]
+
+        assert [r.success for r in results] == [True] * 10
+        assert downloader.enters == 1
+        assert downloader.exits == 1
+
+    @pytest.mark.asyncio
+    async def test_skips_downloader_that_fails_to_start(self, tmp_path, caplog):
+        broken = LifecycleDownloader(fail_start=True)
+        broken.name = "broken"
+        working = LifecycleDownloader()
+
+        results = [
+            r
+            async for r in download_papers(
+                ["10.1234/paper"], tmp_path, downloaders=[broken, working], use_cache=False
+            )
+        ]
+
+        assert results[0].success is True
+        assert results[0].source == "lifecycle"
+        assert "browser not found" in caplog.text

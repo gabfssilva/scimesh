@@ -271,6 +271,60 @@ async def test_search_single_page_when_results_fit():
     assert call_count == 1
 
 
+def _mock_citations_client(pages: list[dict]) -> tuple[MagicMock, list[str]]:
+    """Client whose first GET resolves the seed work and later GETs return pages."""
+    seed = _make_work("W1", "Seed", 2020)
+    responses = [seed, *pages]
+    urls: list[str] = []
+
+    async def mock_get(url: str):
+        urls.append(url)
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json = MagicMock(return_value=responses[len(urls) - 1])
+        return mock_response
+
+    client = MagicMock()
+    client.get = mock_get
+    return client, urls
+
+
+@pytest.mark.asyncio
+async def test_citations_paginates_with_cursor():
+    pages = [
+        _make_openalex_response(
+            [_make_work(f"W{i}", f"Citing {i}", 2023) for i in range(200)], 232, "cursor_2"
+        ),
+        _make_openalex_response(
+            [_make_work(f"W{i}", f"Citing {i}", 2023) for i in range(200, 232)], 232, None
+        ),
+    ]
+    provider = OpenAlex()
+    provider._client, urls = _mock_citations_client(pages)
+
+    papers = [p async for p in provider.citations("10.1/seed", direction="in", max_results=1000)]
+
+    assert len(papers) == 232
+    assert "cursor=cursor_2" in urls[2]
+
+
+@pytest.mark.asyncio
+async def test_citations_stops_at_max_results_without_extra_pages():
+    pages = [
+        _make_openalex_response(
+            [_make_work(f"W{i}", f"Citing {i}", 2023) for i in range(200)], 476, "cursor_2"
+        ),
+    ]
+    provider = OpenAlex()
+    provider._client, urls = _mock_citations_client(pages)
+
+    papers = [p async for p in provider.citations("10.1/seed", direction="in", max_results=150)]
+
+    assert len(papers) == 150
+    assert len(urls) == 2
+
+
 # Tests for CitationRange filter
 
 

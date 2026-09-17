@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
+from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Self
 
 import httpx
 
 if TYPE_CHECKING:
     from scimesh.download.host_concurrency import HostSemaphores
+
+logger = logging.getLogger(__name__)
 
 
 class Downloader(ABC):
@@ -68,3 +73,24 @@ class Downloader(ABC):
         if self._client:
             await self._client.aclose()
             self._client = None
+
+
+async def start_downloaders(
+    stack: AsyncExitStack, downloaders: Iterable[Downloader]
+) -> list[Downloader]:
+    """Open downloaders on the stack, skipping those that fail to start.
+
+    Args:
+        stack: Exit stack that owns the opened downloaders.
+        downloaders: Downloaders to open, in order.
+
+    Returns:
+        The downloaders that started, in the original order.
+    """
+    started: list[Downloader] = []
+    for downloader in downloaders:
+        try:
+            started.append(await stack.enter_async_context(downloader))
+        except Exception as e:
+            logger.warning("Skipping downloader %s: failed to start: %s", downloader.name, e)
+    return started

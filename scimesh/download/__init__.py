@@ -1,6 +1,7 @@
 import logging
 import re
 from collections.abc import AsyncIterator, Iterable
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -8,7 +9,7 @@ import httpx
 import streamish as st
 
 from scimesh.cache import PaperCache
-from scimesh.download.base import Downloader
+from scimesh.download.base import Downloader, start_downloaders
 from scimesh.download.fallback import FallbackDownloader
 from scimesh.download.host_concurrency import HostSemaphores
 from scimesh.download.openaccess import OpenAccessDownloader
@@ -71,7 +72,8 @@ async def download_papers(
     """Download papers for a list of DOIs.
 
     Tries each downloader in order until one succeeds. Saves PDFs to the
-    output directory with sanitized filenames based on DOIs.
+    output directory with sanitized filenames based on DOIs. Downloaders are
+    opened once for the whole batch; those that fail to start are skipped.
 
     Args:
         dois: An iterable of DOIs to download.
@@ -92,11 +94,14 @@ async def download_papers(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    async def download_one(doi: str) -> DownloadResult:
-        return await _download_single(doi, output_dir, downloaders, cache if use_cache else None)
+    async with AsyncExitStack() as stack:
+        started = await start_downloaders(stack, downloaders)
 
-    async for result in st.map_async(download_one, dois, concurrency=max_concurrency):
-        yield result
+        async def download_one(doi: str) -> DownloadResult:
+            return await _download_single(doi, output_dir, started, cache if use_cache else None)
+
+        async for result in st.map_async(download_one, dois, concurrency=max_concurrency):
+            yield result
 
 
 async def _download_single(
@@ -113,7 +118,7 @@ async def _download_single(
     Args:
         doi: The DOI to download.
         output_dir: Directory to save the PDF.
-        downloaders: List of downloaders to try.
+        downloaders: Opened downloaders to try, in order.
         cache: Optional PaperCache for caching PDFs.
 
     Returns:
@@ -136,18 +141,17 @@ async def _download_single(
 
     for downloader in downloaders:
         try:
-            async with downloader:
-                pdf_bytes = await downloader.download(doi)
-                if pdf_bytes is not None:
-                    filepath.write_bytes(pdf_bytes)
-                    if cache is not None:
-                        cache.save_pdf(doi, pdf_bytes)
-                    return DownloadResult(
-                        doi=doi,
-                        success=True,
-                        filename=filename,
-                        source=downloader.name,
-                    )
+            pdf_bytes = await downloader.download(doi)
+            if pdf_bytes is not None:
+                filepath.write_bytes(pdf_bytes)
+                if cache is not None:
+                    cache.save_pdf(doi, pdf_bytes)
+                return DownloadResult(
+                    doi=doi,
+                    success=True,
+                    filename=filename,
+                    source=downloader.name,
+                )
         except httpx.TimeoutException:
             logger.debug("Timeout from %s for DOI %s", downloader.name, doi)
             continue

@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
+from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING
 
-from scimesh.download.base import Downloader
+from scimesh.download.base import Downloader, start_downloaders
 
 if TYPE_CHECKING:
     from scimesh.download.host_concurrency import HostSemaphores
@@ -48,18 +49,19 @@ class FallbackDownloader(Downloader):
         """
         super().__init__(host_semaphores=host_semaphores)
         self._downloaders = downloaders
+        self._stack = AsyncExitStack()
+        self._started: list[Downloader] = []
 
     async def __aenter__(self) -> FallbackDownloader:
-        """Open all underlying downloaders."""
+        """Open the underlying downloaders, skipping those that fail to start."""
         await super().__aenter__()
-        for d in self._downloaders:
-            await d.__aenter__()
+        self._started = await start_downloaders(self._stack, self._downloaders)
         return self
 
     async def __aexit__(self, *args: object) -> None:
-        """Close all underlying downloaders."""
-        for d in self._downloaders:
-            await d.__aexit__(*args)
+        """Close the underlying downloaders that started."""
+        await self._stack.aclose()
+        self._started = []
         await super().__aexit__(*args)
 
     async def download(self, doi: str) -> bytes | None:
@@ -71,14 +73,14 @@ class FallbackDownloader(Downloader):
         Returns:
             PDF bytes if any downloader succeeds, None otherwise.
         """
-        for downloader in self._downloaders:
+        for downloader in self._started:
             try:
                 result = await downloader.download(doi)
                 if result:
                     logger.debug("Downloaded %s via %s", doi, downloader.name)
                     return result
             except Exception as e:
-                logger.debug("Downloader %s failed for %s: %s", downloader.name, doi, e)
+                logger.warning("Downloader %s failed for %s: %s", downloader.name, doi, e)
                 continue
 
         logger.debug("All downloaders failed for: %s", doi)
