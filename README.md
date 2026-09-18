@@ -12,7 +12,7 @@ Search arXiv, OpenAlex, Scopus and Semantic Scholar through one API, fetch PDFs 
 ## Features
 
 - **Multi-provider search** - arXiv, OpenAlex, Scopus, Semantic Scholar, queried in parallel
-- **Scopus-style query syntax** - `TITLE(transformers) AND AUTHOR(Vaswani)`
+- **Scopus-style query syntax** - `TITLE(attention) AND AUTHOR(Vaswani)`
 - **Programmatic query API** - compose queries with Python operators (`&`, `|`, `~`)
 - **One cache** - API responses, PDFs, extracted text and failed downloads in `~/.scimesh`
 - **PDF download** - Open Access via Unpaywall, Sci-Hub opt-in
@@ -48,7 +48,7 @@ uv add scimesh
 
 ```bash
 # Search (OpenAlex by default)
-scimesh search "TITLE(transformer) AND AUTHOR(Vaswani)"
+scimesh search "TITLE(attention) AND AUTHOR(Vaswani)"
 
 # Several providers
 scimesh search "TITLE(BERT)" -p arxiv,openalex,semantic_scholar
