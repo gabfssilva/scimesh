@@ -1,352 +1,219 @@
-# tests/test_cli_download.py
+"""Tests for the download, text and cache commands."""
+
 import json
 from io import StringIO
-from unittest.mock import patch
 
 import pytest
 
+from scimesh.cache import Cache
 from scimesh.cli import (
     _extract_arxiv_doi_from_url,
-    _parse_dois_from_file,
-    _parse_dois_from_stdin,
+    _parse_ids_from_file,
+    _parse_ids_from_stdin,
     app,
 )
-from scimesh.download import DownloadResult
+from scimesh.download.base import Downloader
+
+PDF = b"%PDF-1.4 fake"
 
 
-@pytest.fixture(autouse=True)
-def set_unpaywall_email(monkeypatch):
-    """Set UNPAYWALL_EMAIL for all tests in this module."""
-    monkeypatch.setenv("UNPAYWALL_EMAIL", "test@example.com")
+class FakeDownloader(Downloader):
+    def __init__(self, content: bytes | None = PDF):
+        super().__init__()
+        self.name = "fake"
+        self.content = content
+        self.calls: list[str] = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        return None
+
+    async def download(self, doi: str) -> bytes | None:
+        self.calls.append(doi)
+        return self.content
 
 
 @pytest.fixture
-def mock_download_results():
-    """Fixture providing sample download results."""
-
-    async def _generator(dois, output_dir, downloaders=None):
-        for doi in dois:
-            if "fail" in doi:
-                yield DownloadResult(
-                    doi=doi,
-                    success=False,
-                    error="not found",
-                )
-            else:
-                yield DownloadResult(
-                    doi=doi,
-                    success=True,
-                    filename=f"{doi.replace('/', '_')}.pdf",
-                    source="open_access",
-                )
-
-    return _generator
+def home(tmp_path, monkeypatch):
+    monkeypatch.setenv("SCIMESH_HOME", str(tmp_path / "scimesh"))
+    return tmp_path
 
 
-# Test DOI parsing from positional argument
-class TestPositionalDOI:
-    @patch("scimesh.cli.download_papers")
-    def test_single_doi_positional(self, mock_download, mock_download_results, tmp_path, capsys):
-        """Test downloading with a single positional DOI argument."""
-        mock_download.side_effect = mock_download_results
-
-        with pytest.raises(SystemExit) as exc_info:
-            app(["download", "10.1234/paper", "-o", str(tmp_path)])
-
-        assert exc_info.value.code == 0
-        captured = capsys.readouterr()
-        assert "Downloading 1 papers" in captured.out
-        assert "10.1234_paper.pdf" in captured.out
-        assert "Downloaded: 1/1" in captured.out
-
-    @patch("scimesh.cli.download_papers")
-    def test_doi_with_special_chars(self, mock_download, mock_download_results, tmp_path, capsys):
-        """Test DOI with special characters."""
-        mock_download.side_effect = mock_download_results
-
-        with pytest.raises(SystemExit) as exc_info:
-            app(["download", "10.1234/paper.v2", "-o", str(tmp_path)])
-
-        assert exc_info.value.code == 0
-        mock_download.assert_called_once()
-        call_args = mock_download.call_args
-        dois = list(call_args[0][0])
-        assert dois == ["10.1234/paper.v2"]
+@pytest.fixture
+def downloader(monkeypatch):
+    fake = FakeDownloader()
+    monkeypatch.setattr("scimesh.api.create_downloaders", lambda *_, **__: [fake])
+    return fake
 
 
-# Test DOI parsing from file
-class TestFileInput:
-    def test_parse_dois_from_file(self, tmp_path):
-        """Test parsing DOIs from a file."""
-        doi_file = tmp_path / "dois.txt"
-        doi_file.write_text("10.1234/paper1\n10.5678/paper2\n# comment\n\n10.9999/paper3\n")
-
-        dois = _parse_dois_from_file(doi_file)
-
-        assert dois == ["10.1234/paper1", "10.5678/paper2", "10.9999/paper3"]
-
-    def test_parse_dois_from_file_empty_lines(self, tmp_path):
-        """Test that empty lines are skipped."""
-        doi_file = tmp_path / "dois.txt"
-        doi_file.write_text("\n\n10.1234/paper\n\n")
-
-        dois = _parse_dois_from_file(doi_file)
-
-        assert dois == ["10.1234/paper"]
-
-    def test_parse_dois_from_file_comments(self, tmp_path):
-        """Test that comment lines are skipped."""
-        doi_file = tmp_path / "dois.txt"
-        doi_file.write_text("# This is a comment\n10.1234/paper\n# Another comment\n")
-
-        dois = _parse_dois_from_file(doi_file)
-
-        assert dois == ["10.1234/paper"]
-
-    @patch("scimesh.cli.download_papers")
-    def test_download_from_file(self, mock_download, mock_download_results, tmp_path, capsys):
-        """Test downloading from a file with DOIs."""
-        mock_download.side_effect = mock_download_results
-
-        doi_file = tmp_path / "dois.txt"
-        doi_file.write_text("10.1234/paper1\n10.5678/paper2\n")
-        output_dir = tmp_path / "output"
-
-        with pytest.raises(SystemExit) as exc_info:
-            app(["download", "--from", str(doi_file), "-o", str(output_dir)])
-
-        assert exc_info.value.code == 0
-        captured = capsys.readouterr()
-        assert "Downloading 2 papers" in captured.out
-        assert "Downloaded: 2/2" in captured.out
-
-    def test_download_from_nonexistent_file(self, tmp_path, capsys):
-        """Test error when file does not exist."""
-        output_dir = tmp_path / "output"
-
-        with pytest.raises(SystemExit) as exc_info:
-            app(["download", "--from", str(tmp_path / "nonexistent.txt"), "-o", str(output_dir)])
-
-        assert exc_info.value.code == 1
-        captured = capsys.readouterr()
-        assert "File not found" in captured.err
+def run(*args: str) -> int | str | None:
+    with pytest.raises(SystemExit) as exit_info:
+        app(list(args))
+    return exit_info.value.code
 
 
-# Test stdin detection logic
-class TestStdinInput:
-    @patch("sys.stdin", new_callable=StringIO)
-    @patch("sys.stdin.isatty", return_value=False)
-    def test_parse_dois_from_stdin_json(self, mock_isatty, mock_stdin):
-        """Test parsing DOIs from JSON stdin."""
-        json_data = json.dumps(
-            {
-                "papers": [
-                    {"doi": "10.1234/paper1", "title": "Paper 1"},
-                    {"doi": "10.5678/paper2", "title": "Paper 2"},
-                    {"title": "Paper without DOI"},
-                ]
-            }
-        )
-        mock_stdin.read = lambda: json_data
-        # Need to re-patch stdin with the data
-        with patch("sys.stdin", StringIO(json_data)):
-            dois = _parse_dois_from_stdin()
-
-        assert dois == ["10.1234/paper1", "10.5678/paper2"]
-
-    @patch("sys.stdin", StringIO("invalid json"))
-    def test_parse_dois_from_stdin_invalid_json(self):
-        """Test handling of invalid JSON from stdin."""
-        dois = _parse_dois_from_stdin()
-        assert dois == []
-
-    @patch("sys.stdin", StringIO('{"papers": []}'))
-    def test_parse_dois_from_stdin_empty_papers(self):
-        """Test handling of empty papers list."""
-        dois = _parse_dois_from_stdin()
-        assert dois == []
-
-    def test_parse_dois_from_stdin_arxiv_url_fallback(self):
-        """Test that arXiv URLs are converted to DOIs when DOI is missing."""
-        json_data = json.dumps(
-            {
-                "papers": [
-                    {"doi": "10.1234/real.doi", "url": "https://example.com"},
-                    {"url": "https://arxiv.org/abs/1908.06954v2"},  # No DOI, has arXiv URL
-                    {"url": "https://arxiv.org/pdf/2301.12345.pdf"},  # PDF URL format
-                    {"url": "https://example.com/other"},  # Non-arXiv URL, no DOI
-                ]
-            }
-        )
-        with patch("sys.stdin", StringIO(json_data)):
-            dois = _parse_dois_from_stdin()
-
-        assert dois == [
-            "10.1234/real.doi",
-            "10.48550/arXiv.1908.06954",
-            "10.48550/arXiv.2301.12345",
-        ]
+def pipe_stdin(monkeypatch, content: str) -> None:
+    stdin = StringIO(content)
+    stdin.isatty = lambda: False  # type: ignore[method-assign]
+    monkeypatch.setattr("sys.stdin", stdin)
 
 
-class TestArxivDoiExtraction:
-    """Tests for arXiv URL to DOI conversion."""
+class TestIdParsing:
+    def test_arxiv_doi_from_abs_url(self):
+        doi = _extract_arxiv_doi_from_url("https://arxiv.org/abs/1908.06954v2")
+        assert doi == "10.48550/arXiv.1908.06954"
 
-    def test_extract_arxiv_doi_from_abs_url(self):
-        """Test extracting DOI from arXiv abstract URL."""
-        url = "https://arxiv.org/abs/1908.06954v2"
-        assert _extract_arxiv_doi_from_url(url) == "10.48550/arXiv.1908.06954"
+    def test_arxiv_doi_from_pdf_url(self):
+        doi = _extract_arxiv_doi_from_url("https://arxiv.org/pdf/1706.03762")
+        assert doi == "10.48550/arXiv.1706.03762"
 
-    def test_extract_arxiv_doi_from_pdf_url(self):
-        """Test extracting DOI from arXiv PDF URL."""
-        url = "https://arxiv.org/pdf/2301.12345.pdf"
-        assert _extract_arxiv_doi_from_url(url) == "10.48550/arXiv.2301.12345"
-
-    def test_extract_arxiv_doi_from_non_arxiv_url(self):
-        """Test that non-arXiv URLs return None."""
-        url = "https://example.com/paper"
-        assert _extract_arxiv_doi_from_url(url) is None
-
-    def test_extract_arxiv_doi_from_none(self):
-        """Test that None URL returns None."""
+    def test_no_url(self):
         assert _extract_arxiv_doi_from_url(None) is None
+        assert _extract_arxiv_doi_from_url("https://example.com/paper") is None
 
-    @patch("scimesh.cli.download_papers")
-    @patch("scimesh.cli._parse_dois_from_stdin")
-    @patch("sys.stdin.isatty", return_value=False)
-    def test_download_from_stdin(
-        self, mock_isatty, mock_parse, mock_download, mock_download_results, tmp_path, capsys
-    ):
-        """Test downloading from piped stdin."""
-        mock_parse.return_value = ["10.1234/paper1", "10.5678/paper2"]
-        mock_download.side_effect = mock_download_results
+    def test_file_skips_blanks_and_comments(self, tmp_path):
+        path = tmp_path / "dois.txt"
+        path.write_text("# comment\n10.1234/a\n\n10.1234/b\n")
 
-        with pytest.raises(SystemExit) as exc_info:
-            app(["download", "-o", str(tmp_path)])
+        assert _parse_ids_from_file(path) == ["10.1234/a", "10.1234/b"]
 
-        assert exc_info.value.code == 0
-        captured = capsys.readouterr()
-        assert "Downloading 2 papers" in captured.out
+    def test_stdin_json(self, monkeypatch):
+        pipe_stdin(
+            monkeypatch,
+            json.dumps(
+                {"papers": [{"doi": "10.1234/a"}, {"url": "https://arxiv.org/abs/1706.03762"}]}
+            ),
+        )
 
+        assert _parse_ids_from_stdin() == ["10.1234/a", "10.48550/arXiv.1706.03762"]
 
-# Test output formatting
-class TestOutputFormatting:
-    @patch("scimesh.cli.download_papers")
-    def test_success_output_format(self, mock_download, mock_download_results, tmp_path, capsys):
-        """Test output format for successful downloads."""
-        mock_download.side_effect = mock_download_results
+    def test_stdin_invalid_json(self, monkeypatch):
+        pipe_stdin(monkeypatch, "not json")
 
-        with pytest.raises(SystemExit) as exc_info:
-            app(["download", "10.1234/paper", "-o", str(tmp_path)])
-
-        assert exc_info.value.code == 0
-        captured = capsys.readouterr()
-        # Check checkmark symbol
-        assert "\u2713" in captured.out or "✓" in captured.out
-        assert "10.1234_paper.pdf" in captured.out
-        assert "(open_access)" in captured.out
-
-    @patch("scimesh.cli.download_papers")
-    def test_failure_output_format(self, mock_download, tmp_path, capsys):
-        """Test output format for failed downloads."""
-
-        async def _failed_generator(dois, output_dir, downloaders=None):
-            for doi in dois:
-                yield DownloadResult(
-                    doi=doi,
-                    success=False,
-                    error="not found",
-                )
-
-        mock_download.side_effect = _failed_generator
-
-        with pytest.raises(SystemExit) as exc_info:
-            app(["download", "10.1234/fail", "-o", str(tmp_path)])
-
-        assert exc_info.value.code == 0
-        captured = capsys.readouterr()
-        # Check X symbol
-        assert "\u2717" in captured.out or "✗" in captured.out
-        assert "not found" in captured.out
-        assert "Downloaded: 0/1 | Failed: 1" in captured.out
-
-    @patch("scimesh.cli.download_papers")
-    def test_mixed_results_summary(self, mock_download, mock_download_results, tmp_path, capsys):
-        """Test summary with mixed success/failure."""
-        mock_download.side_effect = mock_download_results
-
-        doi_file = tmp_path / "dois.txt"
-        doi_file.write_text("10.1234/paper1\n10.5678/fail_paper\n10.9999/paper2\n")
-
-        with pytest.raises(SystemExit) as exc_info:
-            app(["download", "--from", str(doi_file), "-o", str(tmp_path / "output")])
-
-        assert exc_info.value.code == 0
-        captured = capsys.readouterr()
-        assert "Downloaded: 2/3 | Failed: 1" in captured.out
+        assert _parse_ids_from_stdin() == []
 
 
-# Test error cases
-class TestErrorCases:
-    @patch("sys.stdin.isatty", return_value=True)
-    def test_no_dois_provided(self, mock_isatty, tmp_path, capsys):
-        """Test error when no DOIs are provided."""
-        with pytest.raises(SystemExit) as exc_info:
-            app(["download", "-o", str(tmp_path)])
+class TestDownload:
+    def test_single_doi(self, home, downloader, tmp_path, capsys):
+        output = tmp_path / "pdfs"
 
-        assert exc_info.value.code == 1
-        captured = capsys.readouterr()
-        assert "No DOIs provided" in captured.err
+        assert run("download", "10.1234/paper", "-o", str(output)) == 0
 
-    def test_download_help(self, capsys):
-        """Test that download command shows help."""
-        with pytest.raises(SystemExit) as exc_info:
-            app(["download", "--help"])
-        assert exc_info.value.code == 0
+        assert (output / "10.1234_paper.pdf").read_bytes() == PDF
+        assert "Downloaded: 1/1" in capsys.readouterr().out
+
+    def test_from_file(self, home, downloader, tmp_path):
+        ids = tmp_path / "dois.txt"
+        ids.write_text("10.1234/a\n10.1234/b\n")
+        output = tmp_path / "pdfs"
+
+        assert run("download", "--from", str(ids), "-o", str(output)) == 0
+
+        assert sorted(p.name for p in output.glob("*.pdf")) == ["10.1234_a.pdf", "10.1234_b.pdf"]
+
+    def test_from_stdin(self, home, downloader, tmp_path, monkeypatch):
+        pipe_stdin(monkeypatch, json.dumps({"papers": [{"doi": "10.1234/a"}]}))
+        output = tmp_path / "pdfs"
+
+        assert run("download", "-o", str(output)) == 0
+
+        assert (output / "10.1234_a.pdf").exists()
+
+    def test_missing_file(self, home, tmp_path, capsys):
+        assert run("download", "--from", str(tmp_path / "absent.txt")) == 1
+        assert "File not found" in capsys.readouterr().err
+
+    def test_no_ids(self, home, monkeypatch, capsys):
+        pipe_stdin(monkeypatch, "")
+
+        assert run("download") == 1
+        assert "No papers provided" in capsys.readouterr().err
+
+    def test_reports_failures(self, home, monkeypatch, tmp_path, capsys):
+        monkeypatch.setattr(
+            "scimesh.api.create_downloaders", lambda *_, **__: [FakeDownloader(content=None)]
+        )
+
+        assert run("download", "10.1234/paper", "-o", str(tmp_path / "pdfs")) == 0
+
+        out = capsys.readouterr().out
+        assert "not found" in out
+        assert "Downloaded: 0/1" in out
+
+    def test_second_run_reuses_the_cache(self, home, downloader, tmp_path):
+        output = tmp_path / "pdfs"
+
+        run("download", "10.1234/paper", "-o", str(output))
+        run("download", "10.1234/paper", "-o", str(output))
+
+        assert downloader.calls == ["10.1234/paper"]
+
+    def test_extract_caches_text(self, home, downloader, monkeypatch, tmp_path):
+        monkeypatch.setattr("scimesh.api.extract_markdown", lambda path: "# Extracted")
+
+        assert run("download", "10.1234/paper", "-o", str(tmp_path / "pdfs"), "--extract") == 0
+
+        with Cache() as cache:
+            assert cache.text("10.1234/paper") == "# Extracted"
 
 
-# Test input source priority
-class TestInputPriority:
-    @patch("scimesh.cli.download_papers")
-    @patch("scimesh.cli._parse_dois_from_stdin")
-    @patch("sys.stdin.isatty", return_value=False)
-    def test_file_takes_priority_over_stdin(
-        self, mock_isatty, mock_parse_stdin, mock_download, mock_download_results, tmp_path, capsys
-    ):
-        """Test that --from file takes priority over stdin."""
-        mock_parse_stdin.return_value = ["10.stdin/paper"]
-        mock_download.side_effect = mock_download_results
+class TestText:
+    def test_prints_markdown(self, home, downloader, monkeypatch, capsys):
+        monkeypatch.setattr("scimesh.api.extract_markdown", lambda path: "# Extracted")
 
-        doi_file = tmp_path / "dois.txt"
-        doi_file.write_text("10.file/paper\n")
+        assert run("text", "10.1234/paper") == 0
+        assert "# Extracted" in capsys.readouterr().out
 
-        with pytest.raises(SystemExit) as exc_info:
-            app(["download", "--from", str(doi_file), "-o", str(tmp_path / "output")])
+    def test_writes_to_file(self, home, downloader, monkeypatch, tmp_path):
+        monkeypatch.setattr("scimesh.api.extract_markdown", lambda path: "# Extracted")
+        output = tmp_path / "paper.md"
 
-        assert exc_info.value.code == 0
-        # Verify file DOIs were used, not stdin
-        mock_download.assert_called_once()
-        call_args = mock_download.call_args
-        dois = list(call_args[0][0])
-        assert dois == ["10.file/paper"]
-        # Stdin parser should not have been called
-        mock_parse_stdin.assert_not_called()
+        assert run("text", "10.1234/paper", "-o", str(output)) == 0
+        assert output.read_text() == "# Extracted"
 
-    @patch("scimesh.cli.download_papers")
-    @patch("scimesh.cli._parse_dois_from_stdin")
-    @patch("sys.stdin.isatty", return_value=False)
-    def test_positional_takes_priority_over_stdin(
-        self, mock_isatty, mock_parse_stdin, mock_download, mock_download_results, tmp_path, capsys
-    ):
-        """Test that positional DOI takes priority over stdin."""
-        mock_parse_stdin.return_value = ["10.stdin/paper"]
-        mock_download.side_effect = mock_download_results
+    def test_without_pdf(self, home, monkeypatch, capsys):
+        monkeypatch.setattr(
+            "scimesh.api.create_downloaders", lambda *_, **__: [FakeDownloader(content=None)]
+        )
 
-        with pytest.raises(SystemExit) as exc_info:
-            app(["download", "10.positional/paper", "-o", str(tmp_path)])
+        assert run("text", "10.1234/paper") == 1
+        assert "No text available" in capsys.readouterr().err
 
-        assert exc_info.value.code == 0
-        mock_download.assert_called_once()
-        call_args = mock_download.call_args
-        dois = list(call_args[0][0])
-        assert dois == ["10.positional/paper"]
-        mock_parse_stdin.assert_not_called()
+
+class TestCacheCommands:
+    def test_stats(self, home, capsys):
+        with Cache() as cache:
+            cache.save_pdf("10.1234/a", PDF, source="open_access")
+            cache.save_text("10.1234/a", "body", extractor="v1")
+
+        assert run("cache", "stats") == 0
+
+        out = capsys.readouterr().out
+        assert "PDFs:      1" in out
+        assert "Texts:     1" in out
+
+    def test_search(self, home, capsys):
+        with Cache() as cache:
+            cache.save_text("10.1234/a", "transformers attend", extractor="v1")
+
+        assert run("cache", "search", "transformers") == 0
+        assert "10.1234/a" in capsys.readouterr().out
+
+    def test_gc(self, home, capsys):
+        with Cache() as cache:
+            cache.save_pdf("10.1234/a", PDF, source="open_access").unlink()
+
+        assert run("cache", "gc") == 0
+        assert "Dropped rows: 1" in capsys.readouterr().out
+
+    def test_clear(self, home, capsys):
+        with Cache() as cache:
+            cache.save_pdf("10.1234/a", PDF, source="open_access")
+
+        assert run("cache", "clear") == 0
+        assert "Cleared 1 PDFs" in capsys.readouterr().out
+
+        with Cache() as cache:
+            assert cache.stats().documents == 0

@@ -40,6 +40,7 @@ class Arxiv(Provider):
     """arXiv paper search provider."""
 
     name = "arxiv"
+    supports_get = True
     BASE_URL = "https://export.arxiv.org/api/query"
     PAGE_SIZE = 100
     RATE_LIMIT_DELAY = 3.0

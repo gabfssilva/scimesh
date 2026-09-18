@@ -142,6 +142,39 @@ def test_tree_format_paper():
     assert "URL: https://example.com/paper" in output
 
 
+def test_tree_shows_the_doi_beside_the_url():
+    paper = Paper(
+        title="Space-Time Attention",
+        authors=(Author("Gedas Bertasius"),),
+        year=2021,
+        source="openalex",
+        doi="10.48550/arxiv.2102.05095",
+        url="http://arxiv.org/abs/2102.05095",
+    )
+    output = TreeExporter().format_paper(paper)
+
+    assert "DOI: 10.48550/arxiv.2102.05095" in output
+    assert "URL: http://arxiv.org/abs/2102.05095" in output
+    assert output.strip().endswith("URL: http://arxiv.org/abs/2102.05095")
+    assert output.count("└──") == 1
+
+
+def test_tree_without_a_doi_ends_on_the_url():
+    paper = Paper(title="No DOI", authors=(Author("Alice"),), year=2020, source="test", url="u")
+    output = TreeExporter().format_paper(paper)
+
+    assert "DOI:" not in output
+    assert output.count("└──") == 1
+
+
+def test_tree_without_doi_or_url_ends_on_the_authors():
+    paper = Paper(title="Bare", authors=(Author("Alice"),), year=2020, source="test")
+    output = TreeExporter().format_paper(paper)
+
+    assert output.strip().endswith("Authors: Alice")
+    assert output.count("└──") == 1
+
+
 def test_tree_export_truncates_authors():
     papers = [
         Paper(
@@ -164,17 +197,8 @@ def test_tree_export_empty_result():
     assert output == "No papers found."
 
 
-def test_get_exporter_workspace_raises():
-    """Workspace has a different interface, must be imported directly."""
+def test_get_exporter_unknown_format_raises():
     import pytest
 
     with pytest.raises(ValueError, match="Unknown export format: workspace"):
         get_exporter("workspace")
-
-
-def test_vault_exporter_direct_import():
-    """VaultExporter should be imported directly."""
-    from scimesh.export.paper_exporter import VaultExporter
-
-    exporter = VaultExporter()
-    assert isinstance(exporter, VaultExporter)

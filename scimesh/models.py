@@ -1,4 +1,3 @@
-from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -56,26 +55,6 @@ class SearchResult:
 
     papers: list[Paper]
     total_by_provider: dict[str, int] = field(default_factory=dict)
-
-    def dedupe(self) -> "SearchResult":
-        """Remove duplicate papers, merging metadata from different sources."""
-        groups: dict[str, list[Paper]] = defaultdict(list)
-
-        for paper in self.papers:
-            key = paper.doi if paper.doi else f"{paper.title.lower()}:{paper.year}"
-            groups[key].append(paper)
-
-        unique: list[Paper] = []
-        for papers in groups.values():
-            if len(papers) == 1:
-                unique.append(papers[0])
-            else:
-                unique.append(merge_papers(papers))
-
-        return SearchResult(
-            papers=unique,
-            total_by_provider=self.total_by_provider,
-        )
 
 
 def merge_papers(papers: list[Paper]) -> Paper:

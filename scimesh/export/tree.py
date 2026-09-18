@@ -32,18 +32,20 @@ class TreeExporter(Exporter):
 
     def format_paper(self, paper: Paper) -> str:
         """Format a single paper as tree view."""
-        lines: list[str] = []
+        lines = [
+            self._truncate(paper.title),
+            f"├── Year: {paper.year}",
+            f"├── Authors: {self._format_authors(paper)}",
+        ]
 
-        lines.append(self._truncate(paper.title))
-
-        lines.append(f"├── Year: {paper.year}")
-        lines.append(f"├── Authors: {self._format_authors(paper)}")
+        if paper.doi:
+            lines.append(f"├── DOI: {paper.doi}")
 
         url = self._get_url(paper)
         if url:
-            lines.append(f"└── URL: {url}")
-        else:
-            lines[-1] = lines[-1].replace("├──", "└──")
+            lines.append(f"├── URL: {url}")
+
+        lines[-1] = lines[-1].replace("├──", "└──")
 
         return "\n".join(lines)
 

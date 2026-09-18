@@ -38,14 +38,9 @@ class ParseError(SciMeshError):
         self.position = position
 
 
-class CacheError(SciMeshError):
-    """Error with PDF cache operations."""
-
-
 __all__ = [
     "SciMeshError",
     "ProviderError",
     "DownloadError",
     "ParseError",
-    "CacheError",
 ]

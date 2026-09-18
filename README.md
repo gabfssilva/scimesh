@@ -5,33 +5,32 @@
 [![CI](https://github.com/gabfssilva/scimesh/actions/workflows/ci.yml/badge.svg)](https://github.com/gabfssilva/scimesh/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A Python library for systematic literature search across multiple academic databases.
+A Python library for searching scientific papers across academic databases.
 
-Search arXiv, OpenAlex, Scopus, and Semantic Scholar with a unified API. Export to BibTeX, RIS, CSV, JSON, or Workspace. Download PDFs via Open Access (Unpaywall). Index and search full-text content locally.
+Search arXiv, OpenAlex, Scopus and Semantic Scholar through one API, fetch PDFs and text, and cache every fetch: repeating a search reads from SQLite instead of the network, and no paper is downloaded or extracted twice. Export to BibTeX, RIS, CSV or JSON.
 
 ## Features
 
-- **Multi-provider search** - arXiv, OpenAlex, Scopus, Semantic Scholar (parallel queries)
+- **Multi-provider search** - arXiv, OpenAlex, Scopus, Semantic Scholar, queried in parallel
 - **Scopus-style query syntax** - `TITLE(transformers) AND AUTHOR(Vaswani)`
-- **Programmatic query API** - Compose queries with Python operators (`&`, `|`, `~`)
-- **Export formats** - BibTeX, RIS, CSV, JSON, Workspace
-- **PDF download** - Open Access via Unpaywall (Sci-Hub opt-in) with local caching
-- **Fetch specific papers** - Get paper metadata by DOI with `scimesh get`
-- **Citation graph** - Get papers citing or cited by a paper with `scimesh citations`
-- **Fulltext search** - Index PDFs locally and search their content with SQLite FTS5
-- **Metadata merging** - Combine paper data from multiple sources for richer results
-- **Async streaming** - Results arrive as they're found
-- **Automatic deduplication** - By DOI or title+year across providers
+- **Programmatic query API** - compose queries with Python operators (`&`, `|`, `~`)
+- **One cache** - API responses, PDFs, extracted text and failed downloads in `~/.scimesh`
+- **PDF download** - Open Access via Unpaywall, Sci-Hub opt-in
+- **Text extraction** - PDFs to markdown, extracted once and reused
+- **Citation graph** - papers citing or cited by a paper
+- **Export formats** - BibTeX, RIS, CSV, JSON
+- **Async streaming** - results arrive as they are found
+- **Automatic deduplication** - by DOI, or title and year, across providers
 
 ## Installation
 
-Run directly without installing:
+Run without installing:
 
 ```bash
 uvx scimesh search "TITLE(transformer)"
 ```
 
-Install as a CLI tool (recommended):
+Install as a CLI tool:
 
 ```bash
 uv tool install scimesh
@@ -43,21 +42,15 @@ Add to a project:
 uv add scimesh
 ```
 
-With pip:
-
-```bash
-pip install scimesh
-```
-
 ## Quick Start
 
 ### CLI
 
 ```bash
-# Search arXiv and OpenAlex (default providers)
+# Search (OpenAlex by default)
 scimesh search "TITLE(transformer) AND AUTHOR(Vaswani)"
 
-# Search multiple providers (comma-separated)
+# Several providers
 scimesh search "TITLE(BERT)" -p arxiv,openalex,semantic_scholar
 
 # Export to BibTeX
@@ -66,37 +59,32 @@ scimesh search "TITLE(BERT)" -f bibtex -o papers.bib
 # Download PDFs from search results
 scimesh search "TITLE(attention)" -f json | scimesh download -o ./pdfs
 
-# Get a specific paper by DOI
+# One paper by DOI
 scimesh get "10.1038/nature14539"
 
-# Get papers citing a specific paper
+# Papers citing a paper
 scimesh citations "10.1038/nature14539" --direction in
 
-# Index PDFs for fulltext search
-scimesh index ./papers/
+# Paper text as markdown
+scimesh text "10.1038/nature14539" -o paper.md
 
-# Full text search (uses native API for arXiv/Scopus, local index for others)
-scimesh search "ALL(attention mechanism)"
+# Search the text of papers already cached
+scimesh cache search "attention mechanism"
 ```
 
 ### Python API
 
 ```python
 import asyncio
-from scimesh import search, title, author, year, citations
-from scimesh.providers import Arxiv, OpenAlex
+from scimesh import Scimesh
 
 async def main():
-    query = title("transformer") & author("Vaswani") & year(2017, 2023) & citations(50)
+    async with Scimesh(["arxiv", "openalex"]) as sm:
+        async for paper in sm.search("TITLE(transformer) AND PUBYEAR > 2020"):
+            print(f"{paper.title} ({paper.year}) - {paper.citations_count} citations")
 
-    result = await search(
-        query,
-        providers=[Arxiv(), OpenAlex()],
-        max_results=100,
-    )
-
-    for paper in result.papers:
-        print(f"{paper.title} ({paper.year}) - {paper.citations_count} citations")
+        paper = await sm.get("10.1038/nature14539")
+        text = await sm.text("10.1038/nature14539")
 
 asyncio.run(main())
 ```
@@ -111,12 +99,12 @@ The library parses Scopus-compatible query strings automatically.
 
 **Plain Text Search:**
 
-You can search without field specifiers - plain text searches in both title and abstract:
+Searching without a field specifier looks in both title and abstract:
 
 ```bash
-scimesh search "transformers"                    # Same as TITLE-ABS(transformers)
-scimesh search "attention mechanism"             # Searches title OR abstract
-scimesh search "deep learning AND PUBYEAR > 2020"  # Can combine with operators
+scimesh search "transformers"                       # same as TITLE-ABS(transformers)
+scimesh search "attention mechanism"
+scimesh search "deep learning AND PUBYEAR > 2020"
 ```
 
 **Field Operators:**
@@ -131,7 +119,7 @@ scimesh search "deep learning AND PUBYEAR > 2020"  # Can combine with operators
 | `AUTHOR(...)` | Search by author | `AUTHOR(Vaswani)` |
 | `AUTH(...)` | Alias for AUTHOR | `AUTH(Hinton)` |
 | `DOI(...)` | Search by DOI | `DOI(10.1038/nature14539)` |
-| `ALL(...)` | Full text search | `ALL(protein folding)` |
+| `ALL(...)` | Widest search the provider offers | `ALL(protein folding)` |
 
 **Year Operators:**
 
@@ -154,7 +142,7 @@ scimesh search "deep learning AND PUBYEAR > 2020"  # Can combine with operators
 | `CITEDBY = 0` | Exact count | Papers with no citations |
 | `CITATIONS >= 100` | Alias for CITEDBY | Same as `CITEDBY >= 100` |
 
-> **Note**: OpenAlex supports native citation filtering. Semantic Scholar supports native min filter only. Other providers filter client-side (slower for large result sets).
+> **Note**: OpenAlex filters citations natively. Semantic Scholar supports a native minimum only. Other providers filter client-side, which is slower for large result sets.
 
 **Logical Operators:**
 
@@ -168,138 +156,104 @@ scimesh search "deep learning AND PUBYEAR > 2020"  # Can combine with operators
 **Examples:**
 
 ```bash
-# Basic title search
-scimesh search "TITLE(transformer)"
-
-# Author + title
 scimesh search "TITLE(attention is all you need) AND AUTHOR(Vaswani)"
-
-# Multiple terms with OR
 scimesh search "TITLE(GPT-4) OR TITLE(GPT-3) OR TITLE(ChatGPT)"
-
-# Exclusion
 scimesh search "TITLE(machine learning) AND NOT AUTHOR(Smith)"
-
-# Year range
 scimesh search "TITLE(BERT) AND PUBYEAR > 2018 AND PUBYEAR < 2022"
-
-# Complex nested query
 scimesh search "(TITLE(transformer) OR TITLE(attention)) AND AUTHOR(Google) AND PUBYEAR >= 2017"
-
-# Search across title, abstract, and keywords
 scimesh search "TITLE-ABS-KEY(reinforcement learning) AND PUBYEAR = 2023"
-
-# Filter by citation count (highly cited papers)
 scimesh search "TITLE(BERT) AND CITEDBY >= 100"
-
-# Citation range
-scimesh search "TITLE(transformer) AND CITATIONS >= 50 AND CITATIONS <= 500"
-
-# Full text search
-scimesh search "ALL(CRISPR gene editing)"
 ```
+
+### What `ALL()` means
+
+`ALL(...)` asks each provider for the widest search it offers, so its reach differs per provider:
+
+| Provider | Translates to | Covers |
+|----------|---------------|--------|
+| arXiv | `all:"term"` | title, abstract, authors, comments |
+| Scopus | `ALL(term)` | every indexed field, including references |
+| OpenAlex | `fulltext.search:term` | full text where OpenAlex has it |
+| Semantic Scholar | the `query` parameter | title and abstract |
+
+None of them guarantee the text of the PDF. To search text you have extracted yourself, use `scimesh cache search`, which reads the local cache and returns the same results every time.
 
 ### Programmatic Query API
 
 Build queries with Python operators for type safety and composability.
 
-**Field Builders:**
-
 ```python
 from scimesh import title, abstract, author, keyword, doi, fulltext, year, citations
 
-# Single field queries
 q = title("transformer architecture")
 q = author("Yoshua Bengio")
 q = abstract("self-attention mechanism")
-q = keyword("natural language processing")
 q = doi("10.1038/nature14539")
-q = fulltext("protein structure prediction")
-```
 
-**Year Filters:**
+q = year(2020, 2024)      # range, inclusive
+q = year(start=2020)      # from 2020 onwards
+q = citations(100)        # at least 100 citations
+q = citations(100, 1000)  # between 100 and 1000
 
-```python
-from scimesh import year
-
-q = year(2020, 2024)      # Range: 2020-2024 inclusive
-q = year(start=2020)      # From 2020 onwards
-q = year(end=2023)        # Until 2023
-q = year(2023, 2023)      # Exact year 2023
-```
-
-**Citation Filters:**
-
-```python
-from scimesh import citations
-
-q = citations(100)            # Min 100 citations (same as citations(min=100))
-q = citations(min=50)         # At least 50 citations
-q = citations(max=500)        # At most 500 citations
-q = citations(100, 1000)      # Between 100 and 1000 citations
-```
-
-**Combining with Operators:**
-
-```python
-from scimesh import title, author, year
-
-# AND: both conditions must match
+# AND, OR and NOT
 q = title("BERT") & author("Google")
-
-# OR: either condition matches
 q = title("GPT-3") | title("GPT-4")
-
-# NOT: exclude matches
 q = title("neural networks") & ~author("Smith")
 
-# Complex combinations
 q = (
     (title("transformer") | title("attention"))
     & author("Vaswani")
     & year(2017, 2023)
     & ~keyword("computer vision")
 )
-
-# With citation filter
-q = title("BERT") & year(2019, 2024) & citations(100)
 ```
 
-**Full Example:**
+---
+
+## Python API
+
+Everything goes through `Scimesh`, which owns the providers, the downloaders and the cache.
 
 ```python
-import asyncio
-from scimesh import search, title, author, year
-from scimesh.providers import Arxiv, OpenAlex, Scopus
+from scimesh import Scimesh
 
-async def main():
-    # Build query programmatically
-    query = title("large language model") & year(2022, 2024)
+async with Scimesh(["openalex", "semantic_scholar"]) as sm:
+    async for paper in sm.search("TITLE(transformer)"):
+        ...
 
-    # Or use string syntax (equivalent)
-    query = "TITLE(large language model) AND PUBYEAR >= 2022"
+    paper = await sm.get("10.1038/nature14539")
 
-    result = await search(
-        query,
-        providers=[Arxiv(), OpenAlex()],
-        max_results=50,
-    )
+    async for citing in sm.citations("10.1038/nature14539", direction="in", max_results=50):
+        ...
 
-    print(f"Found {len(result.papers)} papers")
+    path = await sm.pdf("10.1038/nature14539")   # cache, else download, then cache
+    text = await sm.text("10.1038/nature14539")  # cache, else extract, then cache
 
-    # Export to BibTeX
-    from scimesh.export import get_exporter
-    get_exporter("bibtex").export(result, "papers.bib")
+    async for fetch in sm.fetch_many(dois, concurrency=5, extract=True):
+        print(fetch.key, fetch.source, fetch.error)
 
-asyncio.run(main())
+    keys = sm.search_text("attention mechanism")  # FTS5 over cached text
 ```
 
-**Streaming Mode:**
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `providers` | Names or `Provider` instances | `("openalex",)` |
+| `cache` | A `Cache` instance to share | one at `~/.scimesh` |
+| `scihub` | Enable the Sci-Hub fallback | `False` |
+| `host_concurrency` | `"3"` or `"arxiv.org=2,api.unpaywall.org=3"` | none |
+| `on_error` | `fail`, `warn` or `ignore` when a provider fails | `warn` |
+| `dedupe` | Deduplicate across providers | `True` |
+| `failure_ttl` | How long a failed download is remembered | 7 days |
+| `response_ttl` | How long a cached API response stays usable | 1 day |
+| `refresh` | Ignore cached responses, but still store new ones | `False` |
+
+Providers can also be used directly:
 
 ```python
-# Process papers as they arrive from providers
-async for paper in search(query, providers, stream=True):
-    print(f"Found: {paper.title}")
+from scimesh.providers import Arxiv, OpenAlex
+
+async with Scimesh([Arxiv(), OpenAlex(mailto="you@example.com")]) as sm:
+    ...
 ```
 
 ---
@@ -314,83 +268,33 @@ scimesh search <query> [OPTIONS]
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `-p, --provider` | Providers (comma-separated or repeated): arxiv, openalex, scopus, semantic_scholar | openalex |
-| `-n, --max` | Max total results | 100 |
-| `-f, --format` | Output: tree, csv, json, bibtex, ris, workspace | tree |
-| `-o, --output` | Output file path | stdout |
-| `--on-error` | Error handling: fail, warn, ignore | warn |
+| `-p, --provider` | Providers, comma-separated or repeated | openalex |
+| `-n, --max` | Maximum total results | 100 |
+| `-f, --format` | tree, csv, json, bibtex, ris | tree |
+| `-o, --output` | Output file | stdout |
+| `--on-error` | fail, warn, ignore | warn |
 | `--no-dedupe` | Disable deduplication | false |
-| `--local-fulltext-indexing` | Auto-download and index PDFs for fulltext (Semantic Scholar) | false |
-| `--scihub` | Enable Sci-Hub fallback for `--local-fulltext-indexing` downloads | false |
-| `--host-concurrency` | Concurrency limit: `3` (all hosts) or `arxiv.org=2,unpaywall.org=3` (per-host) | 5 |
-| `--log-level` | Log level: debug, info, warning, error | - |
+| `--refresh` | Ignore cached API responses | false |
+| `--log-level` | debug, info, warning, error | - |
 
-### `scimesh download`
-
-```bash
-scimesh download [DOI] [OPTIONS]
-```
-
-| Flag | Description | Default |
-|------|-------------|---------|
-| `-f, --from` | File with DOIs (one per line) | - |
-| `-o, --output` | Output directory | current dir |
-| `--scihub` | Enable Sci-Hub fallback (see disclaimer) | false |
-
-**Examples:**
-
-```bash
-# Single DOI (Open Access only)
-scimesh download "10.1038/nature14539" -o ./pdfs
-
-# With Sci-Hub fallback enabled
-scimesh download "10.1038/nature14539" -o ./pdfs --scihub
-
-# From file
-scimesh download -f dois.txt -o ./pdfs
-
-# From search results (piped JSON)
-scimesh search "TITLE(attention)" -f json | scimesh download -o ./pdfs
-```
-
-Requires `UNPAYWALL_EMAIL` env var for Open Access.
-
-> **Disclaimer**: Sci-Hub is disabled by default. The `--scihub` flag enables it as a fallback when Open Access sources fail. Sci-Hub may violate copyright laws in your jurisdiction. Use at your own discretion and risk.
+Tree output streams to a terminal; piping switches to JSON.
 
 ### `scimesh get`
-
-Fetch metadata for a specific paper by DOI.
 
 ```bash
 scimesh get <paper_id> [OPTIONS]
 ```
 
+Fetches one paper by DOI or provider id from every provider that supports it, and merges the answers: the longest abstract, the longest author list, the highest citation count.
+
 | Flag | Description | Default |
 |------|-------------|---------|
-| `-p, --provider` | Providers (comma-separated): openalex, semantic_scholar, arxiv, scopus | openalex, semantic_scholar |
-| `-f, --format` | Output: tree, json, bibtex, ris | tree |
-| `-o, --output` | Output file path | stdout |
-| `--merge` | Merge results from multiple providers | true |
-
-**Examples:**
-
-```bash
-# Get paper by DOI (merges data from multiple providers)
-scimesh get "10.1038/nature14539"
-
-# Get from specific providers
-scimesh get "10.1038/nature14539" -p openalex,semantic_scholar
-
-# Export to BibTeX
-scimesh get "10.1038/nature14539" -f bibtex -o paper.bib
-
-# Get arXiv paper by ID
-scimesh get "1706.03762" --provider arxiv
-```
+| `-p, --provider` | Providers to query | openalex, semantic_scholar |
+| `-f, --format` | tree, csv, json, bibtex, ris | tree |
+| `-o, --output` | Output file | stdout |
+| `--refresh` | Ignore cached API responses | false |
 
 ### `scimesh citations`
-
-Get papers citing or cited by a specific paper.
 
 ```bash
 scimesh citations <paper_id> [OPTIONS]
@@ -398,59 +302,90 @@ scimesh citations <paper_id> [OPTIONS]
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `-p, --provider` | Providers (comma-separated): openalex, semantic_scholar, scopus | openalex |
-| `-d, --direction` | Citation direction: in, out, both | both |
-| `-n, --max` | Max results | 100 |
-| `-f, --format` | Output: tree, csv, json, bibtex, ris | tree |
-| `-o, --output` | Output file path | stdout |
+| `-d, --direction` | `in` (citing it), `out` (cited by it), `both` | both |
+| `-p, --provider` | Providers to query | openalex |
+| `-n, --max` | Maximum results | 100 |
+| `-f, --format` | tree, csv, json, bibtex, ris | tree |
+| `-o, --output` | Output file | stdout |
+| `--refresh` | Ignore cached API responses | false |
 
-**Directions:**
-- `in` - Papers that cite this paper (incoming citations)
-- `out` - Papers that this paper cites (references)
-- `both` - Both directions
-
-**Examples:**
+### `scimesh download`
 
 ```bash
-# Get papers citing a DOI
-scimesh citations "10.1038/nature14539" --direction in
-
-# Get references (papers cited by this paper)
-scimesh citations "10.1038/nature14539" --direction out
-
-# From Semantic Scholar with limit
-scimesh citations "10.1038/nature14539" -p semantic_scholar -n 50
-
-# Export to JSON
-scimesh citations "10.1038/nature14539" -f json -o citations.json
+scimesh download [DOI] [OPTIONS]
 ```
 
-### `scimesh index`
-
-Index PDFs for fulltext search.
-
-```bash
-scimesh index <directory> [OPTIONS]
-```
+Papers come from the positional argument, `--from`, or JSON piped on stdin. Each one is downloaded once, cached, and copied into the output directory.
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--clear` | Clear existing index before indexing | false |
+| `-f, --from` | File with DOIs, one per line | - |
+| `-o, --output` | Output directory | current dir |
+| `--extract` | Also extract and cache the text | false |
+| `--concurrency` | Concurrent downloads | 5 |
+| `--scihub` | Enable the Sci-Hub fallback | false |
+| `--host-concurrency` | `3` or `arxiv.org=2,api.unpaywall.org=3` | - |
 
-**Examples:**
+Open Access downloads need `UNPAYWALL_EMAIL`.
+
+> **Disclaimer**: Sci-Hub is off by default. `--scihub` adds it as a last resort when Open Access fails. It may violate copyright law in your jurisdiction. Use at your own discretion and risk.
+
+### `scimesh text`
 
 ```bash
-# Index all PDFs in a directory
-scimesh index ./papers/
-
-# Clear and re-index
-scimesh index ./papers/ --clear
-
-# Then search indexed content with ALL()
-scimesh search "ALL(attention mechanism)"
+scimesh text <paper_id> [OPTIONS]
 ```
 
-The index is stored at `~/.scimesh/fulltext.db` using SQLite FTS5.
+Prints the paper as markdown. The PDF is downloaded if needed, the text extracted once, and both are cached.
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-o, --output` | Output file | stdout |
+| `--scihub` | Enable the Sci-Hub fallback | false |
+| `--host-concurrency` | Concurrency limit for downloads | - |
+
+### `scimesh cache`
+
+```bash
+scimesh cache stats            # what the cache holds
+scimesh cache search <term>    # FTS5 query over cached text
+scimesh cache gc               # drop dangling rows and files, expire stale responses
+scimesh cache clear            # remove everything
+```
+
+---
+
+## Cache
+
+One SQLite database plus the PDF files:
+
+```
+~/.scimesh/
+├── cache.db                  # API responses, documents, text, FTS5 index, failures
+└── files/
+    └── <sha256>.pdf
+```
+
+Everything in it is re-fetchable, so deleting the directory costs time, never work. Set `SCIMESH_HOME` to put it somewhere else.
+
+- **API responses** are cached per URL for a day, so repeating a search, a `get` or a citation walk costs nothing. Pagination caches page by page, so asking for fewer results does not poison the entry. Only `200` responses are stored: a provider that failed is retried, not remembered. `--refresh` ignores what is stored and replaces it.
+- **PDFs** are content-addressed, so the same file arriving under two DOIs is stored once.
+- **Text** is extracted with `pymupdf4llm` and stored with the extractor version, so upgrading the extractor re-extracts instead of serving stale output.
+- **Failures** are remembered for 7 days, so a paywalled paper is not retried on every run.
+- **TTL applies to responses and failures only.** A DOI resolves to the same PDF forever, and cached text is invalidated by the extractor version instead.
+- **Writes** go to the file first and the row second, so an interrupted download leaves at most an unreferenced file, which `cache gc` collects.
+- **Keys** are normalized DOIs. arXiv ids collapse onto their DOI (`1706.03762` and `arxiv:1706.03762` both become `10.48550/arxiv.1706.03762`); papers without a DOI keep a prefixed provider id.
+
+```python
+from scimesh import Cache
+
+with Cache() as cache:
+    cache.pdf("10.1038/nature14539")           # Path | None
+    cache.text("10.1038/nature14539")          # str | None
+    cache.search("attention mechanism")        # list of keys, FTS5 syntax
+    cache.response(url)                        # (body, content_type) | None
+    cache.stats()
+```
 
 ---
 
@@ -459,250 +394,18 @@ The index is stored at `~/.scimesh/fulltext.db` using SQLite FTS5.
 | Provider | API Key | Notes |
 |----------|---------|-------|
 | arXiv | No | Preprints |
-| OpenAlex | No | 61M+ papers, largest open database |
+| OpenAlex | No | 61M+ papers, largest open database. `OPENALEX_MAILTO` joins the polite pool, which has a higher rate limit |
 | Scopus | `SCOPUS_API_KEY` | Requires institutional access |
 | Semantic Scholar | `SEMANTIC_SCHOLAR_API_KEY` (optional) | 200M+ papers, citation graph |
-
-```python
-from scimesh.providers import Arxiv, OpenAlex, Scopus, SemanticScholar
-
-providers = [
-    Arxiv(),
-    OpenAlex(mailto="you@example.com"),  # Optional, for polite pool
-    Scopus(),  # Uses SCOPUS_API_KEY env var
-    SemanticScholar(),  # Optional API key for higher rate limits
-]
-```
-
-### Provider Capabilities
 
 | Provider | search | get | citations | citation filter |
 |----------|--------|-----|-----------|-----------------|
 | arXiv | Yes | Yes | No | Client-side* |
 | OpenAlex | Yes | Yes | Yes (in/out) | Native |
 | Scopus | Yes | Yes | Yes (in only) | Client-side |
-| Semantic Scholar | Yes | Yes | Yes (in/out) | Native (min) / Client-side (max) |
+| Semantic Scholar | Yes | Yes | Yes (in/out) | Native (min), client-side (max) |
 
-*arXiv does not provide citation counts, so citation filters return no results.
-
----
-
-## Workspace Export
-
-The `workspace` format exports papers to a folder structure where each paper gets its own directory containing an `index.yaml` with metadata and an optional `fulltext.pdf`. A root `index.yaml` tracks the full corpus with query, providers, statistics, and paper list.
-
-This structure is designed to be **LLM-friendly**: agents can read the YAML metadata, process PDFs, and extend the schema with custom fields for screening, annotations, or workflow tracking. The format supports incremental updates—run searches multiple times and new papers are added while existing ones are preserved.
-
-### Usage
-
-```bash
-# Export search results to workspace
-scimesh search "TITLE(transformer)" -f workspace -o ./papers-workspace
-
-# With PDF downloads (Open Access)
-scimesh search "TITLE(attention)" -f workspace -o ./review-workspace
-
-# With Sci-Hub fallback for paywalled papers
-scimesh search "TITLE(BERT)" -f workspace -o ./review-workspace --scihub
-
-# Run again to add more papers (incremental)
-scimesh search "TITLE(GPT)" -f workspace -o ./review-workspace
-```
-
-### Structure
-
-```
-papers-workspace/
-├── index.yaml                          # Root index with query, stats, paper list
-├── 2017-vaswani-attention-is-all-you/
-│   ├── index.yaml                      # Paper metadata
-│   └── fulltext.pdf                    # PDF (if downloaded)
-├── 2018-devlin-bert-pre-training-of/
-│   ├── index.yaml
-│   └── fulltext.pdf
-└── 2020-brown-language-models-are/
-    ├── index.yaml
-    └── fulltext.pdf
-```
-
-### Root index.yaml
-
-```yaml
-query: "TITLE(transformer) AND PUBYEAR > 2016"
-providers:
-  - openalex
-  - arxiv
-searched_at: "2024-01-15T10:30:00Z"
-updated_at: "2024-01-16T14:00:00Z"  # Present after incremental updates
-stats:
-  total: 150
-  by_provider:
-    openalex: 100
-    arxiv: 50
-  with_pdf: 120
-  deduplicated: 5
-  skipped: 10
-papers:
-  - path: 2017-vaswani-attention-is-all-you
-    doi: "10.48550/arXiv.1706.03762"
-    title: "Attention Is All You Need"
-  - path: 2018-devlin-bert-pre-training-of
-    doi: "10.18653/v1/N19-1423"
-    title: "BERT: Pre-training of Deep Bidirectional Transformers"
-  # ...
-```
-
-### Paper index.yaml
-
-```yaml
-title: "Attention Is All You Need"
-authors:
-  - Ashish Vaswani
-  - Noam Shazeer
-  - Niki Parmar
-year: 2017
-doi: "10.48550/arXiv.1706.03762"
-sources:
-  - arxiv
-  - openalex
-urls:
-  arxiv: "https://arxiv.org/abs/1706.03762"
-  openalex: "https://openalex.org/W2963403868"
-tags:
-  - machine-learning
-  - attention-mechanism
-citations: 95000
-journal: "Advances in Neural Information Processing Systems"
-open_access: true
-pdf: fulltext.pdf
-abstract: "The dominant sequence transduction models are based on complex recurrent..."
-```
-
-### Designed for LLM Agents
-
-The workspace format enables LLM agents to perform systematic literature reviews autonomously. An agent can:
-
-1. **Build the corpus** - Run `scimesh search` to populate the workspace with papers and PDFs
-2. **Understand the scope** - Read `index.yaml` to see all papers, stats, and the original query
-3. **Screen papers** - Read each paper's metadata and abstract, then add `screening_status: included/excluded` and `exclusion_reason` fields
-4. **Extract data** - Read PDFs, extract relevant findings, and store them in custom fields like `extracted_findings` or `methods_summary`
-5. **Track progress** - Add workflow fields like `review_stage`, `last_reviewed`, or `assigned_to`
-6. **Generate synthesis** - Aggregate structured data across papers to produce summaries, identify themes, or flag contradictions
-
-The folder-per-paper structure means agents can also create additional files: `notes.md` for detailed annotations, `figures/` for extracted images, or `quotes.yaml` for key passages. The workspace grows organically with the review process.
-
-### Extensibility
-
-The format is intentionally minimal. Agents can add any fields they need:
-
-| Use Case | Custom Fields |
-|----------|---------------|
-| Screening | `screening_status`, `exclusion_reason`, `screener_notes` |
-| Quality assessment | `quality_score`, `bias_risk`, `evidence_level` |
-| Data extraction | `extracted_data`, `findings`, `methods_summary` |
-| Synthesis | `themes`, `contradictions`, `synthesis_notes` |
-| Workflow | `assigned_to`, `review_stage`, `last_reviewed` |
-
-The workspace grows with your workflow. Start with metadata, add structure as needed.
-
----
-
-## PDF Caching
-
-Downloaded PDFs are automatically cached at `~/.scimesh/cache/pdfs/`. This avoids re-downloading the same papers.
-
-```python
-from scimesh.download import download_papers, PaperCache
-
-# Cache is enabled by default
-async for result in download_papers(papers, output_dir):
-    print(f"{result.doi}: {result.source}")  # source="cache" if cached
-
-# Disable cache if needed
-async for result in download_papers(papers, output_dir, use_cache=False):
-    ...
-
-# Access cache directly
-cache = PaperCache()
-if cache.has_pdf("10.1038/nature14539"):
-    path = cache.get_pdf_path("10.1038/nature14539")
-```
-
----
-
-## Fulltext Search
-
-Index PDFs locally and search their content using SQLite FTS5. The `ALL(...)` operator works transparently across all providers:
-
-- **arXiv, Scopus, OpenAlex**: Use native fulltext search APIs
-- **Semantic Scholar**: Search API with local FTS5 filter
-
-**Important**: For providers without native fulltext support (Semantic Scholar), you must provide additional filters (title, author, etc.) along with `ALL()`. The search uses API results filtered by your local index.
-
-```bash
-# Index PDFs first (needed for S2 fulltext)
-scimesh index ./papers/
-
-# arXiv/Scopus/OpenAlex: native fulltext (no additional filters needed)
-scimesh search "ALL(attention mechanism)" -p arxiv
-scimesh search "ALL(attention mechanism)" -p openalex
-
-# Semantic Scholar: requires additional filter + local index
-scimesh search "ALL(transformer) AND TITLE(bert)" -p semantic_scholar
-```
-
-**Auto-download with `--local-fulltext-indexing`:**
-
-For Semantic Scholar, you can enable automatic PDF download during fulltext searches. Papers not in the local index will be downloaded (via Open Access), text extracted, and indexed on-the-fly:
-
-```bash
-# Downloads and indexes PDFs automatically (slower, but works without pre-indexing)
-scimesh search "ALL(CRISPR) AND TITLE(gene)" -p semantic_scholar --local-fulltext-indexing
-```
-
-This is useful when you don't have papers pre-indexed locally. Requires `UNPAYWALL_EMAIL` env var.
-
-**Python API:**
-
-```python
-from scimesh.fulltext import FulltextIndex, extract_text_from_pdf
-from pathlib import Path
-
-# Create or open index
-index = FulltextIndex()  # Default: ~/.scimesh/fulltext.db
-
-# Index a PDF
-text = extract_text_from_pdf(Path("paper.pdf"))
-if text:
-    index.add("10.1234/paper", text)
-
-# Search
-results = index.search("transformer architecture")  # Returns list of paper IDs
-
-# FTS5 syntax supported
-results = index.search('"attention mechanism"')  # Phrase search
-results = index.search("deep OR statistical")     # OR search
-
-# Check if indexed
-if index.has("10.1234/paper"):
-    print("Paper is indexed")
-
-# List all indexed papers
-papers = index.list_papers()
-```
-
-**Auto-download (Python API):**
-
-```python
-from scimesh.providers import SemanticScholar
-from scimesh.query import fulltext, title
-
-# Enable auto_download for automatic PDF download and indexing
-async with SemanticScholar(auto_download=True) as provider:
-    query = fulltext("CRISPR") & title("gene editing")
-    async for paper in provider.search(query):
-        print(paper.title)
-```
+*arXiv does not report citation counts, so citation filters return nothing there.
 
 ---
 
@@ -713,14 +416,11 @@ git clone https://github.com/gabfssilva/scimesh
 cd scimesh
 uv sync
 
-# Run CLI
 uv run scimesh search "TITLE(transformer)"
-
-# Install as tool
 uv tool install --reinstall .
 
-# Tests
-uv run pytest
+uv run pytest                      # unit tests
+uv run pytest tests/integration    # hits the real APIs
 ```
 
 ## License

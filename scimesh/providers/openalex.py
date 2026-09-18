@@ -1,4 +1,5 @@
 import logging
+import os
 from collections.abc import AsyncIterator
 from datetime import date
 from typing import Literal
@@ -17,6 +18,8 @@ class OpenAlex(Provider):
     """OpenAlex paper search provider."""
 
     name = "openalex"
+    supports_get = True
+    supports_citations = True
     BASE_URL = "https://api.openalex.org/works"
 
     def __init__(self, api_key: str | None = None, mailto: str | None = None):
@@ -24,7 +27,12 @@ class OpenAlex(Provider):
         self._mailto = mailto
 
     def _load_from_env(self) -> str | None:
-        return None
+        return os.getenv("OPENALEX_API_KEY")
+
+    def _auth_headers(self) -> dict[str, str]:
+        # A key raises the daily budget tenfold. Sent as a header, not a query
+        # parameter, so it stays out of the cached response keys.
+        return {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
 
     def _build_params(self, query: Query) -> tuple[str, str]:
         """Convert Query AST to OpenAlex search and filter params.

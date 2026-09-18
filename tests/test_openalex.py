@@ -90,9 +90,18 @@ def test_translate_year_end_only():
     assert "publication_year:<2025" in filters
 
 
-def test_no_api_key_needed():
+def test_works_without_an_api_key(monkeypatch):
+    monkeypatch.delenv("OPENALEX_API_KEY", raising=False)
     provider = OpenAlex()
+
     assert provider._api_key is None
+    assert provider._auth_headers() == {}
+
+
+def test_api_key_from_env_is_sent_as_a_bearer_token(monkeypatch):
+    monkeypatch.setenv("OPENALEX_API_KEY", "secret")
+
+    assert OpenAlex()._auth_headers() == {"Authorization": "Bearer secret"}
 
 
 def test_reconstruct_abstract():

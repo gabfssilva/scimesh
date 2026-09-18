@@ -1,214 +1,169 @@
-# tests/test_cli.py
+"""Tests for the search, get and citations commands."""
+
 from unittest.mock import patch
 
 import pytest
 
 from scimesh.cli import app
-from scimesh.models import Author, Paper, SearchResult
+from scimesh.models import Author, Paper
+
+PAPER = Paper(
+    title="Test Paper",
+    authors=(Author(name="Test Author"),),
+    year=2020,
+    source="arxiv",
+    doi="10.1234/test",
+)
 
 
-@pytest.fixture
-def mock_search_result():
-    return SearchResult(
-        papers=[
-            Paper(
-                title="Test Paper",
-                authors=(Author(name="Test Author"),),
-                year=2020,
-                source="arxiv",
-                doi="10.1234/test",
-            )
-        ],
-        total_by_provider={"arxiv": 1},
-    )
+def streams(*papers: Paper):
+    """Side effect returning an async generator of papers."""
 
+    def side_effect(*_, **__):
+        async def gen():
+            for paper in papers:
+                yield paper
 
-def make_search_side_effect(result: SearchResult):
-    """Create a side_effect that returns async generator (search always streams now)."""
-
-    async def stream_gen():
-        for paper in result.papers:
-            yield paper
-
-    def side_effect(*args, **kwargs):
-        return stream_gen()
+        return gen()
 
     return side_effect
 
 
-def test_cli_search_help(capsys):
-    """Test that CLI shows help without errors."""
-    with pytest.raises(SystemExit) as exc_info:
-        app(["search", "--help"])
-    assert exc_info.value.code == 0
+@pytest.fixture
+def search_stream():
+    with patch("scimesh.api.search") as mock:
+        mock.side_effect = streams(PAPER)
+        yield mock
 
 
-@patch("scimesh.cli.do_search")
-def test_cli_search_basic(mock_search, mock_search_result, capsys):
-    """Test basic search with non-streaming format."""
-    mock_search.side_effect = make_search_side_effect(mock_search_result)
-
-    with pytest.raises(SystemExit) as exc_info:
-        app(["search", "TITLE(test)", "-p", "arxiv", "-f", "csv"])
-
-    assert exc_info.value.code == 0
-    mock_search.assert_called_once()
-    captured = capsys.readouterr()
-    assert "Test Paper" in captured.out or "1 papers" in captured.err
+def run(*args: str) -> int | str | None:
+    with pytest.raises(SystemExit) as exit_info:
+        app(list(args))
+    return exit_info.value.code
 
 
-@patch("scimesh.cli.do_search")
-def test_cli_search_multiple_providers(mock_search, mock_search_result):
-    """Test multiple providers with non-streaming format."""
-    mock_search.side_effect = make_search_side_effect(mock_search_result)
+class TestSearch:
+    def test_help(self):
+        assert run("search", "--help") == 0
 
-    with pytest.raises(SystemExit) as exc_info:
-        app(["search", "TITLE(test)", "-p", "arxiv", "-p", "openalex", "-f", "csv"])
+    def test_csv_to_stdout(self, search_stream, capsys):
+        assert run("search", "TITLE(test)", "-p", "arxiv", "-f", "csv") == 0
+        assert "Test Paper" in capsys.readouterr().out
 
-    assert exc_info.value.code == 0
-    call_args = mock_search.call_args
-    providers = call_args.kwargs.get("providers") or call_args[1].get("providers")
-    assert len(providers) == 2
+    def test_multiple_providers(self, search_stream):
+        assert run("search", "TITLE(test)", "-p", "arxiv", "-p", "openalex", "-f", "csv") == 0
 
+        providers = search_stream.call_args.kwargs["providers"]
+        assert [p.name for p in providers] == ["arxiv", "openalex"]
 
-@patch("scimesh.cli.do_search")
-def test_cli_search_output_file(mock_search, mock_search_result, tmp_path):
-    mock_search.side_effect = make_search_side_effect(mock_search_result)
-    output_file = tmp_path / "results.csv"
+    def test_comma_separated_providers(self, search_stream):
+        assert run("search", "TITLE(test)", "-p", "arxiv,openalex", "-f", "csv") == 0
 
-    with pytest.raises(SystemExit) as exc_info:
-        app(["search", "TITLE(test)", "-p", "arxiv", "-o", str(output_file)])
+        providers = search_stream.call_args.kwargs["providers"]
+        assert [p.name for p in providers] == ["arxiv", "openalex"]
 
-    assert exc_info.value.code == 0
-    assert output_file.exists()
+    def test_unknown_provider(self, capsys):
+        assert run("search", "TITLE(test)", "-p", "nope") == 1
+        assert "Unknown providers" in capsys.readouterr().err
 
+    def test_unknown_format(self):
+        assert run("search", "TITLE(test)", "-f", "nope") == 1
 
-@patch("scimesh.cli.do_search")
-def test_cli_search_json_format(mock_search, mock_search_result, tmp_path):
-    mock_search.side_effect = make_search_side_effect(mock_search_result)
-    output_file = tmp_path / "results.json"
+    def test_workspace_format_is_gone(self, capsys):
+        assert run("search", "TITLE(test)", "-f", "workspace") == 1
+        assert "Unknown export format" in capsys.readouterr().err
 
-    with pytest.raises(SystemExit) as exc_info:
-        app(["search", "TITLE(test)", "-p", "arxiv", "-o", str(output_file), "-f", "json"])
+    @pytest.mark.parametrize(
+        ("format", "expected"),
+        [
+            ("csv", "Test Paper"),
+            ("json", '"title": "Test Paper"'),
+            ("bibtex", "@"),
+            ("ris", "TY  -"),
+        ],
+    )
+    def test_output_file(self, search_stream, tmp_path, format, expected):
+        output = tmp_path / f"results.{format}"
 
-    assert exc_info.value.code == 0
-    assert output_file.exists()
-    content = output_file.read_text()
-    assert "Test Paper" in content
+        assert run("search", "TITLE(test)", "-f", format, "-o", str(output)) == 0
+        assert expected in output.read_text()
 
+    def test_max_results_truncates(self, tmp_path):
+        papers = [
+            Paper(title=f"P{i}", authors=(), year=2020, source="arxiv", doi=f"10.1234/{i}")
+            for i in range(10)
+        ]
+        output = tmp_path / "results.json"
 
-def test_cli_invalid_provider(capsys):
-    """Test that invalid provider names cause an error."""
-    with pytest.raises(SystemExit) as exc_info:
-        app(["search", "TITLE(test)", "-p", "invalid_provider"])
-    assert exc_info.value.code == 1
-    captured = capsys.readouterr()
-    assert "Unknown providers" in captured.err
+        with patch("scimesh.api.search") as mock:
+            mock.side_effect = streams(*papers)
+            assert run("search", "TITLE(test)", "-n", "3", "-f", "json", "-o", str(output)) == 0
 
+        assert output.read_text().count('"title"') == 3
 
-@patch("scimesh.cli.do_search")
-def test_cli_search_with_max_results(mock_search, mock_search_result):
-    """Test max results truncates results after search."""
-    mock_search.side_effect = make_search_side_effect(mock_search_result)
+    def test_caps_at_a_hundred_by_default(self, tmp_path):
+        papers = [
+            Paper(title=f"P{i}", authors=(), year=2020, source="arxiv", doi=f"10.1234/{i}")
+            for i in range(150)
+        ]
+        output = tmp_path / "results.json"
 
-    with pytest.raises(SystemExit) as exc_info:
-        app(["search", "TITLE(test)", "-p", "arxiv", "-n", "50", "-f", "csv"])
+        with patch("scimesh.api.search") as mock:
+            mock.side_effect = streams(*papers)
+            assert run("search", "TITLE(test)", "-f", "json", "-o", str(output)) == 0
 
-    assert exc_info.value.code == 0
-    # max_results is no longer passed to do_search - it's used to truncate results
-    call_args = mock_search.call_args
-    assert "max_results" not in call_args.kwargs
+        assert output.read_text().count('"title"') == 100
 
+    def test_no_dedupe(self, search_stream):
+        assert run("search", "TITLE(test)", "--no-dedupe", "-f", "csv") == 0
+        assert search_stream.call_args.kwargs["dedupe"] is False
 
-@patch("scimesh.cli.do_search")
-def test_cli_search_no_dedupe(mock_search, mock_search_result):
-    """Test no-dedupe with non-streaming format."""
-    mock_search.side_effect = make_search_side_effect(mock_search_result)
+    @patch("sys.stdout.isatty", return_value=True)
+    def test_tree_is_default_on_a_terminal(self, _isatty, search_stream, capsys):
+        assert run("search", "TITLE(test)") == 0
 
-    with pytest.raises(SystemExit) as exc_info:
-        app(["search", "TITLE(test)", "-p", "arxiv", "--no-dedupe", "-f", "csv"])
+        out = capsys.readouterr().out
+        assert "Test Paper" in out
+        assert "Year: 2020" in out
 
-    assert exc_info.value.code == 0
-    call_args = mock_search.call_args
-    dedupe = call_args.kwargs.get("dedupe")
-    assert dedupe is False
+    @patch("sys.stdout.isatty", return_value=False)
+    def test_json_when_piped(self, _isatty, search_stream, capsys):
+        assert run("search", "TITLE(test)") == 0
 
-
-@patch("scimesh.cli.do_search")
-def test_cli_search_bibtex_format(mock_search, mock_search_result, tmp_path):
-    mock_search.side_effect = make_search_side_effect(mock_search_result)
-    output_file = tmp_path / "results.bib"
-
-    with pytest.raises(SystemExit) as exc_info:
-        app(["search", "TITLE(test)", "-p", "arxiv", "-o", str(output_file), "-f", "bibtex"])
-
-    assert exc_info.value.code == 0
-    assert output_file.exists()
-    content = output_file.read_text()
-    assert "@" in content  # BibTeX entries start with @
-
-
-@patch("scimesh.cli.do_search")
-def test_cli_search_ris_format(mock_search, mock_search_result, tmp_path):
-    mock_search.side_effect = make_search_side_effect(mock_search_result)
-    output_file = tmp_path / "results.ris"
-
-    with pytest.raises(SystemExit) as exc_info:
-        app(["search", "TITLE(test)", "-p", "arxiv", "-o", str(output_file), "-f", "ris"])
-
-    assert exc_info.value.code == 0
-    assert output_file.exists()
-    content = output_file.read_text()
-    assert "TY  -" in content  # RIS entries start with TY
+        out = capsys.readouterr().out
+        assert '"papers"' in out
+        assert '"title": "Test Paper"' in out
 
 
-def test_cli_invalid_format(capsys, tmp_path):
-    """Test that invalid format causes an error."""
-    with pytest.raises(SystemExit) as exc_info:
-        app(["search", "TITLE(test)", "-p", "arxiv", "-f", "invalid_format"])
-    assert exc_info.value.code == 1
+class TestGet:
+    def test_prints_the_paper(self, capsys):
+        with patch("scimesh.api.Scimesh.get", return_value=PAPER):
+            assert run("get", "10.1234/test", "-f", "csv") == 0
+
+        assert "Test Paper" in capsys.readouterr().out
+
+    def test_not_found(self, capsys):
+        with patch("scimesh.api.Scimesh.get", return_value=None):
+            assert run("get", "10.1234/missing") == 1
+
+        assert "not found" in capsys.readouterr().err.lower()
 
 
-@patch("sys.stdout.isatty", return_value=True)
-@patch("scimesh.cli.do_search")
-def test_cli_search_tree_format_default(mock_search, mock_isatty, mock_search_result, capsys):
-    """Test that tree format is the default with streaming in terminal."""
-    mock_search.side_effect = make_search_side_effect(mock_search_result)
+class TestCitations:
+    def test_prints_citing_papers(self, capsys):
+        with patch("scimesh.api.Scimesh.citations") as mock:
+            mock.side_effect = streams(PAPER)
+            assert run("citations", "10.1234/test", "-d", "in", "-f", "csv") == 0
 
-    with pytest.raises(SystemExit) as exc_info:
-        app(["search", "TITLE(test)", "-p", "arxiv"])
+        assert mock.call_args.kwargs["direction"] == "in"
+        assert "Test Paper" in capsys.readouterr().out
 
-    assert exc_info.value.code == 0
-    captured = capsys.readouterr()
-    # Tree format shows paper title as root
-    assert "Test Paper" in captured.out
-    # And year as child
-    assert "Year: 2020" in captured.out
+    def test_no_citations(self, capsys):
+        with patch("scimesh.api.Scimesh.citations") as mock:
+            mock.side_effect = streams()
+            assert run("citations", "10.1234/test") == 0
 
+        assert "No citations found" in capsys.readouterr().err
 
-@patch("sys.stdout.isatty", return_value=False)
-@patch("scimesh.cli.do_search")
-def test_cli_search_json_when_piped(mock_search, mock_isatty, mock_search_result, capsys):
-    """Test that JSON format is used when stdout is piped."""
-    mock_search.side_effect = make_search_side_effect(mock_search_result)
-
-    with pytest.raises(SystemExit) as exc_info:
-        app(["search", "TITLE(test)", "-p", "arxiv"])
-
-    assert exc_info.value.code == 0
-    captured = capsys.readouterr()
-    # JSON format when piped
-    assert '"papers"' in captured.out
-    assert '"title": "Test Paper"' in captured.out
-
-
-def test_search_workspace_format_requires_output(capsys):
-    """Workspace format requires --output flag."""
-    from scimesh.cli import app
-
-    with pytest.raises(SystemExit) as exc_info:
-        app(["search", "TITLE(test)", "--format", "workspace"])
-
-    assert exc_info.value.code == 1
-    captured = capsys.readouterr()
-    assert "--output" in captured.err.lower() or "output" in captured.err.lower()
+    def test_invalid_direction(self):
+        assert run("citations", "10.1234/test", "-d", "sideways") != 0

@@ -39,19 +39,6 @@ def test_paper_hash_by_title_year():
     assert hash(p1) == hash(p2)
 
 
-def test_search_result_dedupe():
-    papers = [
-        Paper(title="Paper A", authors=(), year=2020, source="arxiv", doi="10.1/a"),
-        Paper(title="Paper A Copy", authors=(), year=2020, source="scopus", doi="10.1/a"),
-        Paper(title="Paper B", authors=(), year=2021, source="arxiv", doi="10.1/b"),
-    ]
-    result = SearchResult(papers=papers, total_by_provider={"arxiv": 2, "scopus": 1})
-    deduped = result.dedupe()
-    assert len(deduped.papers) == 2
-    assert deduped.papers[0].title == "Paper A"
-    assert deduped.papers[1].title == "Paper B"
-
-
 def test_search_result_total_by_provider():
     result = SearchResult(
         papers=[],

@@ -3,89 +3,74 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import sys
 from pathlib import Path
-from typing import Annotated, cast
+from typing import Annotated
 
 import cyclopts
 import streamish as st
 
-from scimesh import search as do_search
-from scimesh.download import create_downloader, download_papers
-from scimesh.export import get_exporter
+from scimesh.api import Direction, Scimesh
+from scimesh.cache import Cache
+from scimesh.export import ALL_FORMATS, get_exporter
 from scimesh.export.tree import TreeExporter
-from scimesh.models import Paper, SearchResult, merge_papers
-from scimesh.providers import Arxiv, OpenAlex, Scopus, SemanticScholar
-from scimesh.providers.base import Provider
+from scimesh.models import Paper, SearchResult
+from scimesh.providers import REGISTRY
 from scimesh.search import OnError
-from scimesh.workspace.cli import workspace_app
 
 app = cyclopts.App(
     name="scimesh",
     help="Scientific paper search across multiple providers.",
 )
 
-app.command(workspace_app)
+cache_app = cyclopts.App(name="cache", help="Inspect and maintain the local cache.")
+app.command(cache_app)
 
 
 def _setup_logging(log_level: str | None) -> None:
-    """Configure logging based on log level."""
     if log_level:
-        level = getattr(logging, log_level.upper(), logging.WARNING)
         logging.basicConfig(
-            level=level,
+            level=getattr(logging, log_level.upper(), logging.WARNING),
             format="%(levelname)s %(name)s: %(message)s",
         )
 
 
-PROVIDERS = {
-    "arxiv": Arxiv,
-    "openalex": OpenAlex,
-    "scopus": Scopus,
-    "semantic_scholar": SemanticScholar,
-}
-
-GET_PROVIDERS = {
-    "arxiv": Arxiv,
-    "openalex": OpenAlex,
-    "scopus": Scopus,
-    "semantic_scholar": SemanticScholar,
-}
-
-CITATIONS_PROVIDERS = {
-    "openalex": OpenAlex,
-    "scopus": Scopus,
-    "semantic_scholar": SemanticScholar,
-}
+def _parse_providers(values: list[str]) -> list[str]:
+    names = [p.strip() for item in values for p in item.split(",")]
+    invalid = [p for p in names if p not in REGISTRY]
+    if invalid:
+        print(f"Error: Unknown providers: {invalid}", file=sys.stderr)
+        print(f"Available: {list(REGISTRY)}", file=sys.stderr)
+        sys.exit(1)
+    return names
 
 
-async def _stream_search(
-    query: str,
-    provider_instances: list[Provider],
-    on_error: str,
-    tree_exporter: TreeExporter,
-    max_results: int | None = None,
-    dedupe: bool = True,
-) -> int:
-    """Stream search results, printing each paper as it arrives."""
-    count = 0
+def _resolve_format(format: str, output: Path | None) -> str:
+    if format == "tree" and output is None and not sys.stdout.isatty():
+        format = "json"
+    if format not in ALL_FORMATS:
+        print(f"Error: Unknown export format: {format}", file=sys.stderr)
+        sys.exit(1)
+    return format
 
-    stream = do_search(
-        query,
-        providers=provider_instances,
-        on_error=cast(OnError, on_error),
-        dedupe=dedupe,
-    )
-    if max_results is not None:
-        stream = st.take(max_results, stream)
 
-    async for paper in stream:
-        if count > 0:
-            print()
-        print(tree_exporter.format_paper(paper))
-        count += 1
+def _emit(papers: list[Paper], format: str, output: Path | None, totals: dict[str, int]) -> None:
+    result = SearchResult(papers=papers, total_by_provider=totals)
+    exporter = get_exporter(format)
 
-    return count
+    if output:
+        exporter.export(result, output)
+        print(f"Exported {len(papers)} papers to {output}")
+    elif format == "tree":
+        for i, paper in enumerate(papers):
+            if i > 0:
+                print()
+            print(TreeExporter().format_paper(paper))
+    else:
+        print(exporter.to_string(result))
+
+    print(f"\nTotal: {len(papers)} papers", file=sys.stderr)
 
 
 @app.command(name="search")
@@ -100,327 +85,63 @@ def search(
     ] = ["openalex"],
     output: Annotated[
         Path | None,
-        cyclopts.Parameter(
-            name=["--output", "-o"], help="Output file path (required for workspace format)"
-        ),
+        cyclopts.Parameter(name=["--output", "-o"], help="Output file path"),
     ] = None,
     format: Annotated[
         str,
         cyclopts.Parameter(
-            name=["--format", "-f"], help="Output format: tree, csv, json, bibtex, ris, workspace"
+            name=["--format", "-f"], help="Output format: tree, csv, json, bibtex, ris"
         ),
     ] = "tree",
     max_results: Annotated[
-        int | None,
+        int,
         cyclopts.Parameter(name=["--max", "-n"], help="Maximum total results"),
-    ] = None,
+    ] = 100,
     on_error: Annotated[
-        str,
+        OnError,
         cyclopts.Parameter(name="--on-error", help="Error handling: fail, warn, ignore"),
     ] = "warn",
     no_dedupe: Annotated[
         bool,
         cyclopts.Parameter(name="--no-dedupe", help="Disable deduplication"),
     ] = False,
-    local_fulltext_indexing: Annotated[
+    refresh: Annotated[
         bool,
-        cyclopts.Parameter(
-            name="--local-fulltext-indexing",
-            help="Download and index PDFs for fulltext search (no native fulltext)",
-        ),
+        cyclopts.Parameter(name="--refresh", help="Ignore cached API responses"),
     ] = False,
-    scihub: Annotated[
-        bool,
-        cyclopts.Parameter(
-            name="--scihub",
-            help="Enable Sci-Hub fallback for PDF downloads (requires --local-fulltext-indexing)",
-        ),
-    ] = False,
-    host_concurrency: Annotated[
-        str | None,
-        cyclopts.Parameter(
-            name="--host-concurrency",
-            help="Concurrency: '3' (all hosts) or 'arxiv.org=2,api.unpaywall.org=3' (per-host)",
-        ),
-    ] = "5",
     log_level: Annotated[
         str | None,
-        cyclopts.Parameter(
-            name="--log-level",
-            help="Log level: debug, info, warning, error",
-        ),
+        cyclopts.Parameter(name="--log-level", help="Log level: debug, info, warning, error"),
     ] = None,
 ) -> None:
     """Search for scientific papers across multiple providers."""
     _setup_logging(log_level)
+    names = _parse_providers(providers)
+    format = _resolve_format(format, output)
+    streaming = format == "tree" and output is None
 
-    providers = [p.strip() for item in providers for p in item.split(",")]
-
-    invalid = [p for p in providers if p not in PROVIDERS]
-    if invalid:
-        print(f"Error: Unknown providers: {invalid}", file=sys.stderr)
-        print(f"Available: {list(PROVIDERS.keys())}", file=sys.stderr)
-        sys.exit(1)
-
-    if format == "tree" and output is None and not sys.stdout.isatty():
-        format = "json"
-
-    if format == "workspace":
-        if output is None:
-            print("Error: --output is required for workspace format", file=sys.stderr)
-            sys.exit(1)
-    elif format not in ("tree", "csv", "json", "bibtex", "bib", "ris"):
-        print(f"Error: Unknown export format: {format}", file=sys.stderr)
-        sys.exit(1)
-
-    provider_instances: list[Provider] = []
-    downloader = create_downloader(host_concurrency, scihub) if local_fulltext_indexing else None
-
-    for p in providers:
-        if downloader and p == "semantic_scholar":
-            provider_instances.append(PROVIDERS[p](downloader=downloader))
-        else:
-            provider_instances.append(PROVIDERS[p]())
-
-    if format == "tree" and output is None:
-        count = asyncio.run(
-            _stream_search(
-                query,
-                provider_instances,
-                on_error,
-                TreeExporter(),
-                max_results,
-                dedupe=not no_dedupe,
-            )
-        )
-        print(f"\nTotal: {count} papers", file=sys.stderr)
-        return
-
-    if format == "workspace":
-        from scimesh.export.paper_exporter import VaultExporter
-
-        assert output is not None
-
-        async def _export_vault() -> int:
-            downloader = create_downloader(host_concurrency, scihub)
-
-            stream = do_search(
-                query,
-                providers=provider_instances,
-                on_error=cast(OnError, on_error),
-                dedupe=not no_dedupe,
-            )
-            if max_results is not None:
-                stream = st.take(max_results, stream)
-
-            papers: list[Paper] = []
-            async for paper in stream:
-                papers.append(paper)
-                print(f"  Found: {paper.title[:50]}...", file=sys.stderr)
-
-            result = SearchResult(papers=papers)
-
-            print(f"\nExporting {len(papers)} papers to {output}/", file=sys.stderr)
-
-            async with downloader:
-                exporter = VaultExporter(downloader=downloader, use_scihub=scihub)
-                stats = await exporter.export_async(
-                    result=result,
-                    output_dir=output,
-                )
-
-            print(
-                f"Exported: {stats.total} | Skipped: {stats.skipped} | With PDF: {stats.with_pdf}",
-                file=sys.stderr,
-            )
-            return stats.total
-
-        asyncio.run(_export_vault())
-        return
-
-    exporter = get_exporter(format)
-
-    async def _collect_with_limit() -> SearchResult:
-        stream = do_search(
-            query,
-            providers=provider_instances,
-            on_error=cast(OnError, on_error),
-            dedupe=not no_dedupe,
-        )
-        if max_results is not None:
-            stream = st.take(max_results, stream)
-
+    async def run() -> tuple[list[Paper], dict[str, int]]:
         papers: list[Paper] = []
         totals: dict[str, int] = {}
-        async for paper in stream:
-            papers.append(paper)
-            totals[paper.source] = totals.get(paper.source, 0) + 1
-        return SearchResult(papers=papers, total_by_provider=totals)
+        async with Scimesh(names, on_error=on_error, dedupe=not no_dedupe, refresh=refresh) as sm:
+            async for paper in st.take(max_results, sm.search(query)):
+                if streaming:
+                    if papers:
+                        print()
+                    print(TreeExporter().format_paper(paper))
+                papers.append(paper)
+                totals[paper.source] = totals.get(paper.source, 0) + 1
+        return papers, totals
 
-    result = asyncio.run(_collect_with_limit())
+    papers, totals = asyncio.run(run())
 
-    if output:
-        exporter.export(result, output)
-        print(f"Exported {len(result.papers)} papers to {output}")
-    else:
-        print(exporter.to_string(result))
+    if streaming:
+        print(f"\nTotal: {len(papers)} papers", file=sys.stderr)
+        for name, count in totals.items():
+            print(f"  {name}: {count}", file=sys.stderr)
+        return
 
-    print(f"\nTotal: {len(result.papers)} papers", file=sys.stderr)
-    for pname, count in result.total_by_provider.items():
-        print(f"  {pname}: {count}", file=sys.stderr)
-
-
-def _extract_arxiv_doi_from_url(url: str | None) -> str | None:
-    """Extract arXiv DOI from arXiv URL.
-
-    Example: https://arxiv.org/abs/1908.06954v2 -> 10.48550/arXiv.1908.06954
-    """
-    if not url:
-        return None
-    import re
-
-    match = re.search(r"arxiv\.org/(?:abs|pdf)/(\d+\.\d+)", url)
-    if match:
-        return f"10.48550/arXiv.{match.group(1)}"
-    return None
-
-
-def _parse_dois_from_stdin() -> list[str]:
-    """Parse DOIs from JSON piped via stdin.
-
-    Expects JSON with structure: {"papers": [{"doi": "...", "url": "..."}, ...]}
-    Falls back to constructing arXiv DOIs from URLs when DOI is missing.
-    """
-    try:
-        data = json.load(sys.stdin)
-        papers = data.get("papers", [])
-        dois: list[str] = []
-        for p in papers:
-            doi = p.get("doi")
-            if doi:
-                dois.append(doi)
-            else:
-                arxiv_doi = _extract_arxiv_doi_from_url(p.get("url"))
-                if arxiv_doi:
-                    dois.append(arxiv_doi)
-        return dois
-    except (json.JSONDecodeError, KeyError, TypeError):
-        return []
-
-
-def _parse_dois_from_file(filepath: Path) -> list[str]:
-    """Parse DOIs from a file, one DOI per line."""
-    dois: list[str] = []
-    with filepath.open() as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#"):
-                dois.append(line)
-    return dois
-
-
-async def _run_downloads(
-    dois: list[str],
-    output_dir: Path,
-    use_scihub: bool = False,
-    host_concurrency: str | None = None,
-) -> tuple[int, int]:
-    """Run downloads and print progress. Returns (success_count, fail_count)."""
-    downloader = create_downloader(host_concurrency, use_scihub)
-
-    success_count = 0
-    fail_count = 0
-
-    async for result in download_papers(dois, output_dir, downloaders=[downloader]):
-        if result.success:
-            print(f"  \u2713 {result.filename} ({result.source})")
-            success_count += 1
-        else:
-            error_msg = result.error or "not found"
-            if "All downloaders failed" in error_msg:
-                error_msg = "not found"
-            print(f"  \u2717 {result.doi} - {error_msg}")
-            fail_count += 1
-
-    return success_count, fail_count
-
-
-@app.command(name="download")
-def download(
-    doi: Annotated[
-        str | None,
-        cyclopts.Parameter(help="DOI to download"),
-    ] = None,
-    from_file: Annotated[
-        Path | None,
-        cyclopts.Parameter(name=["--from", "-f"], help="File with DOIs (one per line)"),
-    ] = None,
-    output: Annotated[
-        Path,
-        cyclopts.Parameter(name=["--output", "-o"], help="Output directory for PDFs"),
-    ] = Path("."),
-    scihub: Annotated[
-        bool,
-        cyclopts.Parameter(name="--scihub", help="Enable Sci-Hub fallback (use at your own risk)"),
-    ] = False,
-    host_concurrency: Annotated[
-        str | None,
-        cyclopts.Parameter(
-            name="--host-concurrency",
-            help="Concurrency: '3' (all hosts) or 'arxiv.org=2,api.unpaywall.org=3' (per-host)",
-        ),
-    ] = None,
-) -> None:
-    """Download papers by DOI."""
-    dois: list[str] = []
-
-    if from_file is not None:
-        if not from_file.exists():
-            print(f"Error: File not found: {from_file}", file=sys.stderr)
-            sys.exit(1)
-        dois = _parse_dois_from_file(from_file)
-    elif doi is not None:
-        dois = [doi]
-    elif not sys.stdin.isatty():
-        dois = _parse_dois_from_stdin()
-
-    if not dois:
-        print(
-            "Error: No DOIs provided. Use positional arg, --from file, or pipe JSON.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    print(f"Downloading {len(dois)} papers to {output}/")
-
-    success_count, fail_count = asyncio.run(_run_downloads(dois, output, scihub, host_concurrency))
-
-    total = success_count + fail_count
-    print(f"Downloaded: {success_count}/{total} | Failed: {fail_count}")
-
-
-async def _get_paper(
-    paper_id: str, providers: list[str]
-) -> tuple[list[Paper], dict[str, Exception]]:
-    """Get a paper from multiple providers and return (papers, errors)."""
-    papers: list[Paper] = []
-    errors: dict[str, Exception] = {}
-
-    for pname in providers:
-        if pname not in GET_PROVIDERS:
-            errors[pname] = Exception(f"Provider {pname} does not support get()")
-            continue
-
-        provider = GET_PROVIDERS[pname]()
-        try:
-            async with provider:
-                paper = await provider.get(paper_id)
-                if paper:
-                    papers.append(paper)
-        except Exception as e:
-            errors[pname] = e
-
-    return papers, errors
+    _emit(papers, format, output, totals)
 
 
 @app.command(name="get")
@@ -428,10 +149,7 @@ def get(
     paper_id: Annotated[str, cyclopts.Parameter(help="DOI or provider-specific paper ID")],
     providers: Annotated[
         list[str],
-        cyclopts.Parameter(
-            name=["--provider", "-p"],
-            help="Providers to query (openalex, semantic_scholar, arxiv, scopus)",
-        ),
+        cyclopts.Parameter(name=["--provider", "-p"], help="Providers to query"),
     ] = ["openalex", "semantic_scholar"],
     output: Annotated[
         Path | None,
@@ -443,155 +161,41 @@ def get(
             name=["--format", "-f"], help="Output format: tree, csv, json, bibtex, ris"
         ),
     ] = "tree",
-    merge: Annotated[
+    refresh: Annotated[
         bool,
-        cyclopts.Parameter(name="--merge", help="Merge results from multiple providers"),
-    ] = True,
-) -> None:
-    """Fetch a specific paper by DOI or ID."""
-    providers = [p.strip() for item in providers for p in item.split(",")]
-
-    invalid = [p for p in providers if p not in GET_PROVIDERS]
-    if invalid:
-        print(f"Error: Unknown or unsupported providers: {invalid}", file=sys.stderr)
-        print(f"Available: {list(GET_PROVIDERS.keys())}", file=sys.stderr)
-        sys.exit(1)
-
-    if format == "workspace":
-        print("Error: workspace format is not supported for get command", file=sys.stderr)
-        sys.exit(1)
-
-    try:
-        exporter = get_exporter(format)
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    papers, errors = asyncio.run(_get_paper(paper_id, providers))
-
-    if not papers:
-        print(f"Error: Paper not found: {paper_id}", file=sys.stderr)
-        for pname, error in errors.items():
-            print(f"  {pname}: {error}", file=sys.stderr)
-        sys.exit(1)
-
-    if merge and len(papers) > 1:
-        papers = [merge_papers(papers)]
-
-    result = SearchResult(papers=papers)
-
-    if output:
-        exporter.export(result, output)
-        print(f"Exported to {output}")
-    elif format == "tree":
-        tree_exporter = TreeExporter()
-        for paper in papers:
-            print(tree_exporter.format_paper(paper))
-    else:
-        print(exporter.to_string(result))
-
-    if errors:
-        for pname, error in errors.items():
-            print(f"[WARN] {pname}: {error}", file=sys.stderr)
-
-
-@app.command(name="index")
-def index_cmd(
-    directory: Annotated[
-        Path,
-        cyclopts.Parameter(help="Directory containing PDF files to index"),
-    ],
-    recursive: Annotated[
-        bool,
-        cyclopts.Parameter(name=["--recursive", "-r"], help="Recursively index subdirectories"),
+        cyclopts.Parameter(name="--refresh", help="Ignore cached API responses"),
     ] = False,
 ) -> None:
-    """Index PDF files for fulltext search."""
-    from scimesh.fulltext import FulltextIndex, extract_text_from_pdf
+    """Fetch a specific paper by DOI or ID, merging what each provider knows."""
+    names = _parse_providers(providers)
+    format = _resolve_format(format, output)
 
-    if not directory.exists():
-        print(f"Error: Directory not found: {directory}", file=sys.stderr)
+    async def run() -> Paper | None:
+        async with Scimesh(names, refresh=refresh) as sm:
+            return await sm.get(paper_id)
+
+    paper = asyncio.run(run())
+
+    if paper is None:
+        print(f"Error: Paper not found: {paper_id}", file=sys.stderr)
         sys.exit(1)
 
-    if not directory.is_dir():
-        print(f"Error: Not a directory: {directory}", file=sys.stderr)
-        sys.exit(1)
-
-    index = FulltextIndex()
-
-    pattern = "**/*.pdf" if recursive else "*.pdf"
-    pdf_files = list(directory.glob(pattern))
-
-    if not pdf_files:
-        print(f"No PDF files found in {directory}")
-        return
-
-    print(f"Indexing {len(pdf_files)} PDF files...")
-
-    indexed = 0
-    failed = 0
-
-    for pdf_path in pdf_files:
-        paper_id = pdf_path.stem
-
-        text = extract_text_from_pdf(pdf_path)
-        if text:
-            index.add(paper_id, text)
-            print(f"  [OK] {paper_id}")
-            indexed += 1
-        else:
-            print(f"  [FAIL] {paper_id} - could not extract text")
-            failed += 1
-
-    print(f"\nIndexed: {indexed} | Failed: {failed} | Total in index: {index.count()}")
-
-
-async def _get_citations(
-    paper_id: str, providers: list[str], direction: str, max_results: int
-) -> tuple[list[Paper], dict[str, Exception]]:
-    """Get citations from multiple providers and return (papers, errors)."""
-    papers: list[Paper] = []
-    errors: dict[str, Exception] = {}
-
-    for pname in providers:
-        if pname not in CITATIONS_PROVIDERS:
-            errors[pname] = Exception(f"Provider {pname} does not support citations()")
-            continue
-
-        provider = CITATIONS_PROVIDERS[pname]()
-        try:
-            async with provider:
-                count = 0
-                stream = provider.citations(paper_id, direction=direction, max_results=max_results)
-                async for paper in stream:
-                    papers.append(paper)
-                    count += 1
-                    if count >= max_results:
-                        break
-        except NotImplementedError:
-            errors[pname] = Exception(f"Provider {pname} does not support citations()")
-        except Exception as e:
-            errors[pname] = e
-
-    return papers, errors
+    _emit([paper], format, output, {paper.source: 1})
 
 
 @app.command(name="citations")
 def citations(
     paper_id: Annotated[str, cyclopts.Parameter(help="DOI or provider-specific paper ID")],
     direction: Annotated[
-        str,
+        Direction,
         cyclopts.Parameter(
             name=["--direction", "-d"],
-            help="Citation direction: in (citing this paper), out (cited by this paper), both",
+            help="in (citing this paper), out (cited by this paper), both",
         ),
     ] = "both",
     providers: Annotated[
         list[str],
-        cyclopts.Parameter(
-            name=["--provider", "-p"],
-            help="Providers to query (openalex, semantic_scholar, scopus)",
-        ),
+        cyclopts.Parameter(name=["--provider", "-p"], help="Providers to query"),
     ] = ["openalex"],
     output: Annotated[
         Path | None,
@@ -611,58 +215,251 @@ def citations(
         bool,
         cyclopts.Parameter(name="--no-dedupe", help="Disable deduplication"),
     ] = False,
+    refresh: Annotated[
+        bool,
+        cyclopts.Parameter(name="--refresh", help="Ignore cached API responses"),
+    ] = False,
 ) -> None:
     """Get papers citing or cited by a specific paper."""
-    if direction not in ("in", "out", "both"):
-        print(f"Error: Invalid direction: {direction}", file=sys.stderr)
-        print("Valid options: in, out, both", file=sys.stderr)
-        sys.exit(1)
+    names = _parse_providers(providers)
+    format = _resolve_format(format, output)
 
-    providers = [p.strip() for item in providers for p in item.split(",")]
+    async def run() -> list[Paper]:
+        async with Scimesh(names, dedupe=not no_dedupe, refresh=refresh) as sm:
+            return [
+                paper
+                async for paper in sm.citations(
+                    paper_id, direction=direction, max_results=max_results
+                )
+            ]
 
-    invalid = [p for p in providers if p not in CITATIONS_PROVIDERS]
-    if invalid:
-        print(f"Error: Unknown or unsupported providers: {invalid}", file=sys.stderr)
-        print(f"Available: {list(CITATIONS_PROVIDERS.keys())}", file=sys.stderr)
-        sys.exit(1)
+    papers = asyncio.run(run())
 
-    if format == "workspace":
-        print("Error: workspace format is not supported for citations command", file=sys.stderr)
-        sys.exit(1)
-
-    try:
-        exporter = get_exporter(format)
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    papers, errors = asyncio.run(_get_citations(paper_id, providers, direction, max_results))
-
-    if not papers and not errors:
+    if not papers:
         print(f"No citations found for: {paper_id}", file=sys.stderr)
         sys.exit(0)
 
-    result = SearchResult(papers=papers)
+    totals: dict[str, int] = {}
+    for paper in papers:
+        totals[paper.source] = totals.get(paper.source, 0) + 1
 
-    if not no_dedupe:
-        result = result.dedupe()
+    _emit(papers, format, output, totals)
+
+
+def _extract_arxiv_doi_from_url(url: str | None) -> str | None:
+    """Extract arXiv DOI from an arXiv URL.
+
+    Example: https://arxiv.org/abs/1908.06954v2 -> 10.48550/arXiv.1908.06954
+    """
+    if not url:
+        return None
+    match = re.search(r"arxiv\.org/(?:abs|pdf)/(\d+\.\d+)", url)
+    return f"10.48550/arXiv.{match.group(1)}" if match else None
+
+
+def _parse_ids_from_stdin() -> list[str]:
+    """Parse paper ids from JSON piped via stdin ({"papers": [{"doi": ...}]})."""
+    try:
+        data = json.load(sys.stdin)
+        papers = data.get("papers", [])
+    except (json.JSONDecodeError, AttributeError, TypeError):
+        return []
+
+    ids: list[str] = []
+    for paper in papers:
+        doi = paper.get("doi") or _extract_arxiv_doi_from_url(paper.get("url"))
+        if doi:
+            ids.append(doi)
+    return ids
+
+
+def _parse_ids_from_file(filepath: Path) -> list[str]:
+    """Parse paper ids from a file, one per line, ignoring comments."""
+    return [
+        line.strip()
+        for line in filepath.read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+
+
+def _collect_ids(paper_id: str | None, from_file: Path | None) -> list[str]:
+    if from_file is not None:
+        if not from_file.exists():
+            print(f"Error: File not found: {from_file}", file=sys.stderr)
+            sys.exit(1)
+        ids = _parse_ids_from_file(from_file)
+    elif paper_id is not None:
+        ids = [paper_id]
+    elif not sys.stdin.isatty():
+        ids = _parse_ids_from_stdin()
+    else:
+        ids = []
+
+    if not ids:
+        print(
+            "Error: No papers provided. Use a positional arg, --from file, or pipe JSON.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    return ids
+
+
+def _output_name(key: str) -> str:
+    return re.sub(r'[\\/:*?"<>|]', "_", key) + ".pdf"
+
+
+@app.command(name="download")
+def download(
+    paper_id: Annotated[str | None, cyclopts.Parameter(help="DOI to download")] = None,
+    from_file: Annotated[
+        Path | None,
+        cyclopts.Parameter(name=["--from", "-f"], help="File with DOIs (one per line)"),
+    ] = None,
+    output: Annotated[
+        Path,
+        cyclopts.Parameter(name=["--output", "-o"], help="Output directory for PDFs"),
+    ] = Path("."),
+    extract: Annotated[
+        bool,
+        cyclopts.Parameter(name="--extract", help="Also extract and cache the text"),
+    ] = False,
+    scihub: Annotated[
+        bool,
+        cyclopts.Parameter(name="--scihub", help="Enable Sci-Hub fallback (use at your own risk)"),
+    ] = False,
+    concurrency: Annotated[
+        int,
+        cyclopts.Parameter(name="--concurrency", help="Concurrent downloads"),
+    ] = 5,
+    host_concurrency: Annotated[
+        str | None,
+        cyclopts.Parameter(
+            name="--host-concurrency",
+            help="Concurrency: '3' (all hosts) or 'arxiv.org=2,api.unpaywall.org=3' (per-host)",
+        ),
+    ] = None,
+    log_level: Annotated[
+        str | None,
+        cyclopts.Parameter(name="--log-level", help="Log level: debug, info, warning, error"),
+    ] = None,
+) -> None:
+    """Download papers by DOI into a directory, caching each one once."""
+    _setup_logging(log_level)
+    ids = _collect_ids(paper_id, from_file)
+    output.mkdir(parents=True, exist_ok=True)
+
+    print(f"Downloading {len(ids)} papers to {output}/")
+
+    async def run() -> tuple[int, int]:
+        succeeded = failed = 0
+        async with Scimesh([], scihub=scihub, host_concurrency=host_concurrency) as sm:
+            async for fetch in sm.fetch_many(ids, concurrency=concurrency, extract=extract):
+                if fetch.success:
+                    assert fetch.path is not None
+                    name = _output_name(fetch.key)
+                    (output / name).write_bytes(fetch.path.read_bytes())
+                    print(f"  ✓ {name} ({fetch.source})")
+                    succeeded += 1
+                else:
+                    print(f"  ✗ {fetch.key} - {fetch.error}")
+                    failed += 1
+        return succeeded, failed
+
+    succeeded, failed = asyncio.run(run())
+    print(f"Downloaded: {succeeded}/{succeeded + failed} | Failed: {failed}")
+
+
+@app.command(name="text")
+def text(
+    paper_id: Annotated[str, cyclopts.Parameter(help="DOI or arXiv id")],
+    output: Annotated[
+        Path | None,
+        cyclopts.Parameter(name=["--output", "-o"], help="Output file path"),
+    ] = None,
+    scihub: Annotated[
+        bool,
+        cyclopts.Parameter(name="--scihub", help="Enable Sci-Hub fallback (use at your own risk)"),
+    ] = False,
+    host_concurrency: Annotated[
+        str | None,
+        cyclopts.Parameter(name="--host-concurrency", help="Concurrency limit for downloads"),
+    ] = None,
+    log_level: Annotated[
+        str | None,
+        cyclopts.Parameter(name="--log-level", help="Log level: debug, info, warning, error"),
+    ] = None,
+) -> None:
+    """Print a paper's text as markdown, extracting it once and caching it."""
+    _setup_logging(log_level)
+
+    async def run() -> str | None:
+        async with Scimesh([], scihub=scihub, host_concurrency=host_concurrency) as sm:
+            return await sm.text(paper_id)
+
+    markdown = asyncio.run(run())
+
+    if markdown is None:
+        print(f"Error: No text available for: {paper_id}", file=sys.stderr)
+        sys.exit(1)
 
     if output:
-        exporter.export(result, output)
-        print(f"Exported {len(result.papers)} papers to {output}")
-    elif format == "tree":
-        tree_exporter = TreeExporter()
-        for i, paper in enumerate(result.papers):
-            if i > 0:
-                print()
-            print(tree_exporter.format_paper(paper))
-        print(f"\nTotal: {len(result.papers)} papers", file=sys.stderr)
+        output.write_text(markdown)
+        print(f"Wrote {len(markdown)} characters to {output}")
     else:
-        print(exporter.to_string(result))
+        print(markdown)
 
-    if errors:
-        for pname, error in errors.items():
-            print(f"[WARN] {pname}: {error}", file=sys.stderr)
+
+@cache_app.command(name="stats")
+def cache_stats() -> None:
+    """Show what the cache holds."""
+    with Cache() as cache:
+        stats = cache.stats()
+        print(f"Path:      {cache.root}")
+        print(f"PDFs:      {stats.documents} ({stats.bytes / 1_000_000:.1f} MB)")
+        print(f"Texts:     {stats.texts}")
+        print(f"Responses: {stats.responses}")
+        print(f"Failures:  {stats.failures}")
+
+
+@cache_app.command(name="search")
+def cache_search(
+    term: Annotated[str, cyclopts.Parameter(help="FTS5 query over cached text")],
+    max_results: Annotated[
+        int,
+        cyclopts.Parameter(name=["--max", "-n"], help="Maximum number of results"),
+    ] = 100,
+) -> None:
+    """Search the text of papers already in the cache."""
+    with Cache() as cache:
+        keys = cache.search(term, limit=max_results)
+
+    for key in keys:
+        print(key)
+    print(f"\nTotal: {len(keys)} papers", file=sys.stderr)
+
+
+@cache_app.command(name="gc")
+def cache_gc() -> None:
+    """Drop dangling rows, delete unreferenced files, expire stale API responses."""
+    with Cache() as cache:
+        report = cache.gc()
+    print(
+        f"Dropped rows: {report.dropped_rows} | "
+        f"Deleted files: {report.deleted_files} | "
+        f"Expired responses: {report.expired_responses}"
+    )
+
+
+@cache_app.command(name="clear")
+def cache_clear() -> None:
+    """Remove every cached PDF, text and failure."""
+    with Cache() as cache:
+        stats = cache.stats()
+        cache.clear()
+    print(
+        f"Cleared {stats.documents} PDFs, {stats.texts} texts and {stats.responses} API responses"
+    )
 
 
 def main() -> None:

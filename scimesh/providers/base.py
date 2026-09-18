@@ -1,28 +1,39 @@
 """Base class for paper search providers."""
 
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Literal, Self
 
 import httpx
 
+from scimesh._version import __version__
 from scimesh.models import Paper
 from scimesh.query.combinators import Query
+
+USER_AGENT = f"scimesh/{__version__} (+https://github.com/gabfssilva/scimesh)"
 
 
 class Provider(ABC):
     """Base class for paper search providers."""
 
     name: str
+    supports_get: bool = False
+    supports_citations: bool = False
 
     def __init__(self, api_key: str | None = None) -> None:
         self._api_key = api_key or self._load_from_env()
         self._client: httpx.AsyncClient | None = None
+        self.transport_factory: Callable[[], httpx.AsyncBaseTransport] | None = None
+        """Builds the transport for each open, so responses can be cached."""
 
     @abstractmethod
     def _load_from_env(self) -> str | None:
         """Load API key from environment variable."""
         ...
+
+    def _auth_headers(self) -> dict[str, str]:
+        """Headers that authenticate every request, when a key is configured."""
+        return {}
 
     @abstractmethod
     def search(
@@ -73,7 +84,12 @@ class Provider(ABC):
         yield
 
     async def __aenter__(self) -> Self:
-        self._client = httpx.AsyncClient(timeout=30.0)
+        # arXiv and OpenAlex both ask clients to identify themselves.
+        self._client = httpx.AsyncClient(
+            timeout=30.0,
+            headers={"User-Agent": USER_AGENT, **self._auth_headers()},
+            transport=self.transport_factory() if self.transport_factory else None,
+        )
         return self
 
     async def __aexit__(self, *_: object) -> None:

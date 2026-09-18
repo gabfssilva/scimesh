@@ -1,7 +1,7 @@
 # tests/test_merge.py
 import pytest
 
-from scimesh.models import Author, Paper, SearchResult, merge_papers
+from scimesh.models import Author, Paper, merge_papers
 
 
 class TestMergePapers:
@@ -347,105 +347,3 @@ class TestMergePapers:
         # Non-conflicting values are kept
         assert merged.extras["unique_to_arxiv"] == "value1"
         assert merged.extras["unique_to_scopus"] == "value2"
-
-
-class TestSearchResultDedupeWithMerge:
-    """Tests for SearchResult.dedupe() with merge functionality."""
-
-    def test_dedupe_merges_duplicates_by_doi(self):
-        """Dedupe should merge papers with same DOI."""
-        papers = [
-            Paper(
-                title="Paper A",
-                authors=(),
-                year=2020,
-                source="arxiv",
-                doi="10.1/a",
-                abstract="Short",
-                citations_count=10,
-            ),
-            Paper(
-                title="Paper A Copy",
-                authors=(),
-                year=2020,
-                source="scopus",
-                doi="10.1/a",
-                abstract="Much longer abstract here",
-                citations_count=50,
-            ),
-            Paper(
-                title="Paper B",
-                authors=(),
-                year=2021,
-                source="arxiv",
-                doi="10.1/b",
-            ),
-        ]
-
-        result = SearchResult(papers=papers)
-        deduped = result.dedupe()
-
-        assert len(deduped.papers) == 2
-
-        # Find the merged paper A
-        paper_a = next(p for p in deduped.papers if p.doi == "10.1/a")
-        assert paper_a.abstract == "Much longer abstract here"
-        assert paper_a.citations_count == 50
-        assert paper_a.source == "arxiv"  # Primary source
-
-    def test_dedupe_merges_duplicates_by_title_year(self):
-        """Dedupe should merge papers with same title and year (no DOI)."""
-        papers = [
-            Paper(
-                title="Test Paper",
-                authors=(Author(name="Alice"),),
-                year=2020,
-                source="arxiv",
-                topics=("ML",),
-            ),
-            Paper(
-                title="Test Paper",
-                authors=(Author(name="Alice"), Author(name="Bob")),
-                year=2020,
-                source="openalex",
-                topics=("AI",),
-            ),
-        ]
-
-        result = SearchResult(papers=papers)
-        deduped = result.dedupe()
-
-        assert len(deduped.papers) == 1
-
-        merged = deduped.papers[0]
-        assert len(merged.authors) == 2  # More authors
-        assert set(merged.topics) == {"ML", "AI"}  # Union
-
-    def test_dedupe_preserves_unique_papers(self):
-        """Dedupe should not modify papers that have no duplicates."""
-        p = Paper(
-            title="Unique Paper",
-            authors=(Author(name="Alice"),),
-            year=2020,
-            source="arxiv",
-            doi="10.1/unique",
-            abstract="Unique abstract",
-        )
-
-        result = SearchResult(papers=[p])
-        deduped = result.dedupe()
-
-        assert len(deduped.papers) == 1
-        assert deduped.papers[0] == p
-
-    def test_dedupe_preserves_metadata(self):
-        """Dedupe should preserve total_by_provider."""
-        papers = [
-            Paper(title="A", authors=(), year=2020, source="arxiv"),
-        ]
-        totals = {"arxiv": 10, "scopus": 0}
-
-        result = SearchResult(papers=papers, total_by_provider=totals)
-        deduped = result.dedupe()
-
-        assert deduped.total_by_provider == totals

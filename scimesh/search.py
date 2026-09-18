@@ -1,5 +1,4 @@
 import logging
-import warnings
 from collections.abc import AsyncIterator
 from typing import Literal
 
@@ -37,7 +36,7 @@ async def _search_stream(
             if on_error == "fail":
                 raise
             elif on_error == "warn":
-                warnings.warn(f"Provider {provider.name} failed: {e}", stacklevel=3)
+                logger.warning("Provider %s failed: %s", provider.name, e)
 
     def dedupe_key(paper: Paper) -> str:
         return paper.doi or f"{paper.title.lower()}:{paper.year}"

@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 from collections.abc import AsyncIterator
 from datetime import date
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 from urllib.parse import urlencode
 
 import httpx
 import streamish as st
 
 from scimesh.models import Author, Paper
-from scimesh.providers._fulltext_fallback import FulltextFallbackMixin
 from scimesh.providers.base import Provider
 from scimesh.query.combinators import (
     And,
@@ -23,12 +21,8 @@ from scimesh.query.combinators import (
     Query,
     YearRange,
     extract_citation_range,
-    has_fulltext,
     remove_citation_range,
 )
-
-if TYPE_CHECKING:
-    from scimesh.download.base import Downloader
 
 logger = logging.getLogger(__name__)
 
@@ -38,24 +32,24 @@ API_FIELDS = (
 )
 
 
-class SemanticScholar(FulltextFallbackMixin, Provider):
+class SemanticScholar(Provider):
     """Semantic Scholar paper search provider."""
 
     name = "semantic_scholar"
+    supports_get = True
+    supports_citations = True
     BASE_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
     PAGE_SIZE = 100
     MAX_TOTAL_RESULTS = 1000
 
-    def __init__(
-        self,
-        api_key: str | None = None,
-        downloader: Downloader | None = None,
-    ):
+    def __init__(self, api_key: str | None = None):
         super().__init__(api_key)
-        self._downloader = downloader
 
     def _load_from_env(self) -> str | None:
         return os.getenv("SEMANTIC_SCHOLAR_API_KEY")
+
+    def _auth_headers(self) -> dict[str, str]:
+        return {"x-api-key": self._api_key} if self._api_key else {}
 
     def _translate_query(self, query: Query) -> tuple[str, int | None, int | None]:
         """Convert Query AST to Semantic Scholar query string and year range.
@@ -176,11 +170,6 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
         if self._client is None:
             raise RuntimeError("Provider not initialized. Use 'async with provider:'")
 
-        if has_fulltext(query):
-            async for paper in self._search_with_fulltext_filter(query):
-                yield paper
-            return
-
         author_only = self._extract_author_only(query)
         if author_only:
             async for paper in self._search_by_author(author_only):
@@ -198,60 +187,24 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
                 continue
             yield paper
 
-    async def _fetch_with_retry(
-        self,
-        url: str,
-        headers: dict[str, str],
-    ) -> httpx.Response | None:
-        """Fetch URL with retry logic for rate limiting (429)."""
+    async def _fetch(self, url: str) -> httpx.Response | None:
+        """Fetch a URL, raising for error statuses. Rate limits are the transport's job."""
         if self._client is None:
             return None
 
-        max_retries = 3
-        retry_delay = 1.0
-        response: httpx.Response | None = None
-
-        for attempt in range(max_retries):
-            try:
-                response = await self._client.get(url, headers=headers)
-
-                if response.status_code == 429:
-                    if attempt < max_retries - 1:
-                        logger.warning(
-                            "Rate limited (429), retrying in %.1f seconds (attempt %d/%d)",
-                            retry_delay,
-                            attempt + 1,
-                            max_retries,
-                        )
-                        await asyncio.sleep(retry_delay)
-                        retry_delay *= 2
-                        continue
-                    else:
-                        logger.error("Rate limited after %d attempts", max_retries)
-                        response.raise_for_status()
-
-                response.raise_for_status()
-                return response
-            except httpx.HTTPStatusError:
-                if attempt == max_retries - 1:
-                    raise
-                continue
-
-        return None
+        response = await self._client.get(url)
+        response.raise_for_status()
+        return response
 
     async def _search_by_author(self, author_name: str) -> AsyncIterator[Paper]:
         """Search for papers by author using the author search endpoint."""
         if self._client is None:
             raise RuntimeError("Provider not initialized. Use 'async with provider:'")
 
-        headers: dict[str, str] = {}
-        if self._api_key:
-            headers["x-api-key"] = self._api_key
-
         author_url = f"https://api.semanticscholar.org/graph/v1/author/search?query={author_name}&limit=10&fields=authorId,name,paperCount,citationCount"
         logger.debug("Searching for author: %s", author_url)
 
-        response = await self._fetch_with_retry(author_url, headers)
+        response = await self._fetch(author_url)
         if response is None:
             return
 
@@ -272,7 +225,7 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
             papers_url = f"https://api.semanticscholar.org/graph/v1/author/{author_id}/papers?offset={offset}&limit=100&fields={API_FIELDS}"
             logger.debug("Fetching author papers: %s", papers_url)
 
-            response = await self._fetch_with_retry(papers_url, headers)
+            response = await self._fetch(papers_url)
             if response is None:
                 return
 
@@ -314,10 +267,6 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
             logger.debug("Empty query, returning no results")
             return
 
-        headers: dict[str, str] = {}
-        if self._api_key:
-            headers["x-api-key"] = self._api_key
-
         async def fetch_pages() -> AsyncIterator[dict]:
             params: dict[str, str | int] = {
                 "query": query_str,
@@ -337,7 +286,7 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
                 url = f"{self.BASE_URL}?{urlencode(params)}"
                 logger.debug("Requesting: %s", url)
 
-                response = await self._fetch_with_retry(url, headers)
+                response = await self._fetch(url)
                 if response is None:
                     return
 
@@ -462,44 +411,14 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
 
         url = f"{base_url}/{lookup_id}?fields={API_FIELDS}"
 
-        headers: dict[str, str] = {}
-        if self._api_key:
-            headers["x-api-key"] = self._api_key
-
         logger.debug("Fetching: %s", url)
 
-        max_retries = 3
-        retry_delay = 1.0
-
-        for attempt in range(max_retries):
-            try:
-                response = await self._client.get(url, headers=headers)
-
-                if response.status_code == 404:
-                    return None
-
-                if response.status_code == 429 and attempt < max_retries - 1:
-                    logger.warning(
-                        "Rate limited (429), retrying in %.1f seconds",
-                        retry_delay,
-                    )
-                    await asyncio.sleep(retry_delay)
-                    retry_delay *= 2
-                    continue
-
-                response.raise_for_status()
-                break
-            except httpx.HTTPStatusError as e:
-                if e.response.status_code == 404:
-                    return None
-                if attempt == max_retries - 1:
-                    raise
-                continue
-        else:
+        response = await self._client.get(url)
+        if response.status_code == 404:
             return None
+        response.raise_for_status()
 
-        paper_data = response.json()
-        return self._parse_paper(paper_data)
+        return self._parse_paper(response.json())
 
     async def citations(
         self,
@@ -530,9 +449,6 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
             return
 
         base_url = "https://api.semanticscholar.org/graph/v1/paper"
-        headers: dict[str, str] = {}
-        if self._api_key:
-            headers["x-api-key"] = self._api_key
 
         count = 0
 
@@ -540,7 +456,7 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
             url = f"{base_url}/{s2_id}/citations?fields={API_FIELDS}&limit={min(max_results, 1000)}"
             logger.debug("Fetching citations: %s", url)
 
-            response = await self._client.get(url, headers=headers)
+            response = await self._client.get(url)
             if response.status_code == 200:
                 data = response.json()
                 for item in data.get("data", []):
@@ -557,7 +473,7 @@ class SemanticScholar(FulltextFallbackMixin, Provider):
             url = f"{base_url}/{s2_id}/references?fields={API_FIELDS}&limit={limit}"
             logger.debug("Fetching references: %s", url)
 
-            response = await self._client.get(url, headers=headers)
+            response = await self._client.get(url)
             if response.status_code == 200:
                 data = response.json()
                 for item in data.get("data", []):

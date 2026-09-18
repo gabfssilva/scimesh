@@ -28,11 +28,19 @@ class Scopus(Provider):
     """Scopus paper search provider."""
 
     name = "scopus"
+    supports_get = True
+    supports_citations = True
     BASE_URL = "https://api.elsevier.com/content/search/scopus"
     PAGE_SIZE = 25
 
     def _load_from_env(self) -> str | None:
         return os.getenv("SCOPUS_API_KEY")
+
+    def _auth_headers(self) -> dict[str, str]:
+        headers = {"Accept": "application/json"}
+        if self._api_key:
+            headers["X-ELS-APIKey"] = self._api_key
+        return headers
 
     def _translate_query(self, query: Query) -> str:
         """Convert Query AST to Scopus query syntax."""
@@ -93,11 +101,6 @@ class Scopus(Provider):
         query_str = self._translate_query(query_without_citations)
         logger.debug("Translated query: %s", query_str)
 
-        headers = {
-            "X-ELS-APIKey": self._api_key,
-            "Accept": "application/json",
-        }
-
         sort_param: str | None = None
         if citation_filter and citation_filter.min is not None:
             sort_param = "-citedby-count"
@@ -118,7 +121,7 @@ class Scopus(Provider):
 
                 url = f"{self.BASE_URL}?{urlencode(params)}"
                 logger.debug("Requesting: %s", url)
-                response = await client.get(url, headers=headers)
+                response = await client.get(url)
                 response.raise_for_status()
 
                 data = response.json()
@@ -268,11 +271,6 @@ class Scopus(Provider):
         else:
             query_str = f"EID(2-s2.0-{paper_id})"
 
-        headers = {
-            "X-ELS-APIKey": self._api_key,
-            "Accept": "application/json",
-        }
-
         params = {
             "query": query_str,
             "count": 1,
@@ -282,7 +280,7 @@ class Scopus(Provider):
         url = f"{self.BASE_URL}?{urlencode(params)}"
         logger.debug("Fetching: %s", url)
 
-        response = await self._client.get(url, headers=headers)
+        response = await self._client.get(url)
         response.raise_for_status()
 
         data = response.json()
@@ -337,11 +335,6 @@ class Scopus(Provider):
         if scopus_id.startswith("SCOPUS_ID:"):
             scopus_id = scopus_id.replace("SCOPUS_ID:", "")
 
-        headers = {
-            "X-ELS-APIKey": self._api_key,
-            "Accept": "application/json",
-        }
-
         params = {
             "query": f"REFEID(2-s2.0-{scopus_id})",
             "count": min(max_results, 25),
@@ -351,7 +344,7 @@ class Scopus(Provider):
         url = f"{self.BASE_URL}?{urlencode(params)}"
         logger.debug("Fetching citing papers: %s", url)
 
-        response = await self._client.get(url, headers=headers)
+        response = await self._client.get(url)
         response.raise_for_status()
 
         data = response.json()
